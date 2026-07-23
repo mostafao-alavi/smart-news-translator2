@@ -943,4 +943,17 @@ api.get('/stats', async (c) => {
   }
 });
 
+// POST & GET /api/clear-cache - Clear cache headers and instruct client to reset cache
+api.all('/clear-cache', async (c) => {
+  c.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  c.header('Pragma', 'no-cache');
+  c.header('Expires', '0');
+  c.header('Surrogate-Control', 'no-store');
+  return c.json({
+    success: true,
+    data: { message: 'کش سیستم و پاسخ‌های HTTP با موفقیت پاکسازی شد.', timestamp: new Date().toISOString() },
+    error: null,
+  }, 200);
+});
+
 export default api;

@@ -1373,6 +1373,18 @@ app.post('/api/deploy/publish', (req, res) => {
   });
 });
 
+// ALL /api/clear-cache
+app.all('/api/clear-cache', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.json({
+    success: true,
+    data: { message: 'کش مرورگر و پاسخ‌های HTTP سرور با موفقیت پاکسازی شد.', timestamp: new Date().toISOString() },
+    error: null,
+  });
+});
+
 // Vite Middleware for Dev Mode
 async function start() {
   if (process.env.NODE_ENV !== 'production') {

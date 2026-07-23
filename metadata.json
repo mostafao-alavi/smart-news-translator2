@@ -1,6 +1,6 @@
 {
-  "name": "Remix: Smart News Aggregator and Translator",
-  "description": "Cloudflare Worker and Hono-based RSS news scraper and AI translator using Cloudflare D1 and Workers AI",
+  "name": "1000 Dastan - پلتفرم هوشمند پایش و ترجمه اخبار",
+  "description": "سامانه هوشمند ۱۰۰۰ دستان برای پایش خودکار فیدهای خبری بین‌المللی و ترجمه تخصصی با هوش مصنوعی",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
