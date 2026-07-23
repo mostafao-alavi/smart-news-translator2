@@ -74,7 +74,7 @@ export const CronTriggersTab: React.FC<CronTriggersTabProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Cloudflare Worker Cron Overview Card */}
+      {/* Scheduled Job Overview Card */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4">
           <div className="flex items-center space-x-3 space-x-reverse">
@@ -83,13 +83,13 @@ export const CronTriggersTab: React.FC<CronTriggersTabProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <span>Cloudflare Worker Scheduled Cron Trigger</span>
-                <span className="bg-orange-50 text-orange-700 text-xs px-2 py-0.5 rounded font-mono border border-orange-200">
-                  crons = ["0 * * * *"]
+                <span>سامانه چرخه‌های زمان‌بندی‌شده خودکار</span>
+                <span className="bg-orange-50 text-orange-700 text-xs px-2 py-0.5 rounded font-medium border border-orange-200">
+                  چرخه منظم: هر ۱ ساعت
                 </span>
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
-                توابع زیر در بستر اصلی Cloudflare Worker هر یک ساعت یکبار به صورت خودکار و بدون نیاز به سرور اجرا می‌شوند.
+                پردازش پایش منابع خبری و ترجمه زبانی به صورت ساعتی و خودکار اجرا می‌گردد. همچنین امکان اجرای دستی در هر زمان فراهم است.
               </p>
             </div>
           </div>
@@ -100,7 +100,7 @@ export const CronTriggersTab: React.FC<CronTriggersTabProps> = ({
             className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-4 py-2.5 rounded-lg transition-colors flex items-center justify-center space-x-2 space-x-reverse shrink-0 disabled:opacity-50 shadow-xs"
           >
             <Play className="w-4 h-4 fill-current" />
-            <span>اجرای کامل چرخه اسکرپ و ترجمه</span>
+            <span>اجرای کامل چرخه پایش و ترجمه</span>
           </button>
         </div>
 
@@ -111,15 +111,15 @@ export const CronTriggersTab: React.FC<CronTriggersTabProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-sky-700 flex items-center gap-1.5">
                 <Database className="w-4 h-4" />
-                ۱. تابع دریافت اخبار (src/cron/scraper.ts)
+                ۱. موتور دریافت و پایش اخبار
               </span>
               <span className="text-[10px] text-gray-600 bg-white px-2 py-0.5 rounded border border-gray-200">
-                RSS/Atom Parser
+                پایشگر فیدها
               </span>
             </div>
 
             <p className="text-xs text-gray-600 leading-relaxed">
-              دریافت تمام فیدهای RSS از جدول <code className="text-gray-900 font-bold">sources</code>، استخراج تگ‌های XML با Regex سبک و ثبت اخبار جدید در <code className="text-gray-900 font-bold">articles</code> با وضعیت pending.
+              بررسی کلیه منابع خبری فعال، استخراج آخرین مطالب منتشرشده و ثبت اخبار جدید در پایگاه داده جهت آماده‌سازی ترجمه.
             </p>
 
             <div className="pt-2 flex items-center justify-between">
@@ -129,11 +129,11 @@ export const CronTriggersTab: React.FC<CronTriggersTabProps> = ({
                 className="bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs px-3.5 py-2 rounded-lg font-medium transition-all flex items-center space-x-1.5 space-x-reverse disabled:opacity-50 shadow-2xs"
               >
                 <RefreshCw className={`w-3.5 h-3.5 text-sky-600 ${isTriggeringScraper ? 'animate-spin' : ''}`} />
-                <span>{isTriggeringScraper ? 'در حال اجرا...' : 'اجرای دستی scraper()'}</span>
+                <span>{isTriggeringScraper ? 'در حال پایش اخبار...' : 'اجرای دستی پایش اخبار'}</span>
               </button>
 
               {lastScraperResult && (
-                <span className="text-[11px] text-emerald-700 font-mono font-semibold">
+                <span className="text-[11px] text-emerald-700 font-semibold">
                   +{lastScraperResult.insertedArticles ?? 0} خبر جدید
                 </span>
               )}
@@ -145,15 +145,15 @@ export const CronTriggersTab: React.FC<CronTriggersTabProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-orange-700 flex items-center gap-1.5">
                 <Cpu className="w-4 h-4" />
-                ۲. تابع ترجمه هوشمند (src/cron/translator.ts)
+                ۲. موتور ترجمه زبانی هوش مصنوعی
               </span>
-              <span className="text-[10px] text-orange-700 bg-orange-100/80 px-2 py-0.5 rounded border border-orange-200 font-mono">
-                Workers AI (@cf/meta/m2m100-1.2b & @cf/ai4bharat/indictrans2-en-indic-1B)
+              <span className="text-[10px] text-orange-700 bg-orange-100/80 px-2 py-0.5 rounded border border-orange-200 font-medium">
+                موتور هوش مصنوعی ابری
               </span>
             </div>
 
             <p className="text-xs text-gray-600 leading-relaxed">
-              خوانش حداکثر ۵ خبر pending از جدول <code className="text-gray-900 font-bold">articles</code>، ارسال به مدل Workers AI برای ترجمه به فارسی و ذخیره در <code className="text-gray-900 font-bold">translations</code>.
+              انتخاب اخبار در صف انتظار، پردازش زبانی متون توسط شبکه‌های عصبی عمیق و تولید نسخه ترجمه‌شده فارسی.
             </p>
 
             <div className="pt-2 flex items-center justify-between">
@@ -163,11 +163,11 @@ export const CronTriggersTab: React.FC<CronTriggersTabProps> = ({
                 className="bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-xs px-3.5 py-2 rounded-lg font-medium transition-all flex items-center space-x-1.5 space-x-reverse disabled:opacity-50 shadow-2xs"
               >
                 <Sparkles className={`w-3.5 h-3.5 text-orange-600 ${isTriggeringTranslator ? 'animate-pulse' : ''}`} />
-                <span>{isTriggeringTranslator ? 'در حال ترجمه...' : 'اجرای دستی translator()'}</span>
+                <span>{isTriggeringTranslator ? 'در حال ترجمه اخبار...' : 'اجرای دستی ترجمه اخبار'}</span>
               </button>
 
               {lastTranslatorResult && (
-                <span className="text-[11px] text-emerald-700 font-mono font-semibold">
+                <span className="text-[11px] text-emerald-700 font-semibold">
                   {lastTranslatorResult.successCount ?? 0} ترجمه موفق
                 </span>
               )}

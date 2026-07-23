@@ -13,12 +13,12 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ stats, loading }) 
       {/* Active RSS Sources */}
       <div className="bg-white border border-gray-200/80 rounded-xl p-4 flex items-center justify-between shadow-xs hover:border-gray-300 transition-all">
         <div>
-          <p className="text-xs font-medium text-gray-500">منابع خبری RSS (sources)</p>
+          <p className="text-xs font-medium text-gray-500">منابع خبری فعال</p>
           <div className="flex items-baseline space-x-2 space-x-reverse mt-1">
             <span className="text-2xl font-bold text-gray-900 font-mono">
               {loading ? '...' : stats?.sources_count ?? 0}
             </span>
-            <span className="text-xs text-gray-400">منبع فعال</span>
+            <span className="text-xs text-gray-400">منبع خبری</span>
           </div>
         </div>
         <div className="bg-sky-50 text-sky-600 p-2.5 rounded-lg border border-sky-100">
@@ -29,12 +29,12 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ stats, loading }) 
       {/* Scraped Articles */}
       <div className="bg-white border border-gray-200/80 rounded-xl p-4 flex items-center justify-between shadow-xs hover:border-gray-300 transition-all">
         <div>
-          <p className="text-xs font-medium text-gray-500">اخبار دریافت‌شده (articles)</p>
+          <p className="text-xs font-medium text-gray-500">کل اخبار دریافت‌شده</p>
           <div className="flex items-baseline space-x-2 space-x-reverse mt-1">
             <span className="text-2xl font-bold text-gray-900 font-mono">
               {loading ? '...' : stats?.articles_count ?? 0}
             </span>
-            <span className="text-xs text-gray-400">خبر ذخیره‌شده</span>
+            <span className="text-xs text-gray-400">خبر پایش‌شده</span>
           </div>
         </div>
         <div className="bg-amber-50 text-amber-600 p-2.5 rounded-lg border border-amber-100">
@@ -45,7 +45,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ stats, loading }) 
       {/* Persian Translations */}
       <div className="bg-white border border-gray-200/80 rounded-xl p-4 flex items-center justify-between shadow-xs hover:border-gray-300 transition-all">
         <div>
-          <p className="text-xs font-medium text-gray-500">ترجمه‌های کامل (translations)</p>
+          <p className="text-xs font-medium text-gray-500">ترجمه‌های هوشمند انجام‌شده</p>
           <div className="flex items-baseline space-x-2 space-x-reverse mt-1">
             <span className="text-2xl font-bold text-emerald-600 font-mono">
               {loading ? '...' : stats?.translations_count ?? 0}
@@ -61,7 +61,7 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ stats, loading }) 
       {/* Pending Translations Queue */}
       <div className="bg-white border border-gray-200/80 rounded-xl p-4 flex items-center justify-between shadow-xs hover:border-gray-300 transition-all">
         <div>
-          <p className="text-xs font-medium text-gray-500">صف انتظار ترجمه (pending)</p>
+          <p className="text-xs font-medium text-gray-500">اخبار در صف پردازش</p>
           <div className="flex items-baseline space-x-2 space-x-reverse mt-1">
             <span className="text-2xl font-bold text-orange-600 font-mono">
               {loading ? '...' : stats?.pending_translations_count ?? 0}

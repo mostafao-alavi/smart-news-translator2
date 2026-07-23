@@ -327,7 +327,7 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-gray-200 bg-white py-6 mt-12 text-center text-xs text-gray-500">
         <p>
-          توسعه‌یافته بر پایه معمار ارشد Cloudflare Worker • فریمورک Hono • دیتابیس Cloudflare D1 • Llama 3.1 8B • Gemini 2.5 • M2M100 AI
+          سامانه هوشمند پایش و ترجمه اخبار بین‌الملل • مجهز به موتور پردازش زبان طبیعی و هوش مصنوعی ابری
         </p>
       </footer>
     </div>

@@ -235,7 +235,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
   return (
     <div className="space-y-8">
-      {/* 1. Cron & Scraper Trigger Section */}
+      {/* 1. Scheduled Pipeline Trigger Section */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4">
           <div className="flex items-center space-x-3 space-x-reverse">
@@ -244,13 +244,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <span>کنترل و اجرای چرخه‌های خودکار (Cron Pipeline)</span>
-                <span className="bg-orange-50 text-orange-700 text-xs px-2 py-0.5 rounded font-mono border border-orange-200">
-                  crons = ["0 * * * *"]
+                <span>کنترل و اجرای چرخه‌های خودکار</span>
+                <span className="bg-orange-50 text-orange-700 text-xs px-2 py-0.5 rounded font-medium border border-orange-200">
+                  چرخه منظم: هر ۱ ساعت
                 </span>
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
-                توابع زیر در بستر Cloudflare Worker هر یک ساعت به صورت خودکار اجرا می‌شوند. جهت تست فوری می‌توانید کلیک کنید.
+                توابع پایش و ترجمه به صورت خودکار و ساعتی فعال هستند. جهت تست فوری می‌توانید چرخه‌ها را به‌صورت دستی اجرا نمایید.
               </p>
             </div>
           </div>
@@ -275,15 +275,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-sky-700 flex items-center gap-1.5">
                 <Database className="w-4 h-4" />
-                ۱. دریافت اخبار جدید (Scraper Routine)
+                ۱. دریافت اخبار جدید
               </span>
               <span className="text-[10px] text-gray-600 bg-white px-2 py-0.5 rounded border border-gray-200">
-                RSS Parser
+                پایشگر فیدها
               </span>
             </div>
 
             <p className="text-xs text-gray-600 leading-relaxed">
-              استخراج فیدها و ثبت اخبار جدید در جدول <code className="text-gray-900 font-bold">articles</code> با وضعیت pending.
+              استخراج اخبار جدید از منابع ثبت‌شده و افزودن به صف پردازش.
             </p>
 
             <div className="pt-2 flex items-center justify-between">
@@ -293,11 +293,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 className="bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs px-3.5 py-2 rounded-lg font-medium transition-all flex items-center space-x-1.5 space-x-reverse disabled:opacity-50 shadow-2xs"
               >
                 <RefreshCw className={`w-3.5 h-3.5 text-sky-600 ${isTriggeringScraper ? 'animate-spin' : ''}`} />
-                <span>{isTriggeringScraper ? 'در حال اسکرپ...' : 'اجرای دستی Scraper'}</span>
+                <span>{isTriggeringScraper ? 'در حال پایش...' : 'اجرای دستی پایش'}</span>
               </button>
 
               {lastScraperResult && (
-                <span className="text-[11px] text-emerald-700 font-mono font-semibold">
+                <span className="text-[11px] text-emerald-700 font-semibold">
                   +{lastScraperResult.insertedArticles ?? 0} خبر جدید
                 </span>
               )}
@@ -309,15 +309,15 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-orange-700 flex items-center gap-1.5">
                 <Cpu className="w-4 h-4" />
-                ۲. ترجمه هوشمند اخبار (Translator Routine)
+                ۲. ترجمه هوشمند اخبار
               </span>
-              <span className="text-[10px] text-orange-700 bg-orange-100/80 px-2 py-0.5 rounded border border-orange-200 font-mono">
-                Workers AI
+              <span className="text-[10px] text-orange-700 bg-orange-100/80 px-2 py-0.5 rounded border border-orange-200 font-medium">
+                موتور هوش مصنوعی
               </span>
             </div>
 
             <p className="text-xs text-gray-600 leading-relaxed">
-              خوانش اخبار pending و ترجمه به فارسی روان با موتور هوش مصنوعی انتخابی.
+              پردازش متون خبری موجود در صف و ترجمه به زبان فارسی.
             </p>
 
             <div className="pt-2 flex items-center justify-between">
@@ -327,11 +327,11 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 className="bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-xs px-3.5 py-2 rounded-lg font-medium transition-all flex items-center space-x-1.5 space-x-reverse disabled:opacity-50 shadow-2xs"
               >
                 <Sparkles className={`w-3.5 h-3.5 text-orange-600 ${isTriggeringTranslator ? 'animate-pulse' : ''}`} />
-                <span>{isTriggeringTranslator ? 'در حال ترجمه...' : 'اجرای دستی Translator'}</span>
+                <span>{isTriggeringTranslator ? 'در حال ترجمه...' : 'اجرای دستی ترجمه'}</span>
               </button>
 
               {lastTranslatorResult && (
-                <span className="text-[11px] text-emerald-700 font-mono font-semibold">
+                <span className="text-[11px] text-emerald-700 font-semibold">
                   {lastTranslatorResult.successCount ?? 0} ترجمه موفق
                 </span>
               )}
@@ -377,7 +377,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         </div>
       </div>
 
-      {/* 2. D1 Database Execution Logs & System History Inspector */}
+      {/* 2. System Execution Logs & History Inspector */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-3">
           <div className="flex items-center space-x-3 space-x-reverse">
@@ -386,13 +386,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <span>رصد لاگ‌های اجرا و تاریخچه دیتابیس D1</span>
-                <span className="bg-indigo-50 text-indigo-700 text-xs px-2 py-0.5 rounded font-mono border border-indigo-200">
-                  D1 Audit & Execution Logs
+                <span>پایش لاگ‌های اجرایی و رویدادهای سیستم</span>
+                <span className="bg-indigo-50 text-indigo-700 text-xs px-2 py-0.5 rounded font-medium border border-indigo-200">
+                  گزارش عملکرد و پایش
                 </span>
               </h3>
               <p className="text-xs text-gray-500 mt-0.5">
-                گزارش متمرکز چرخه‌های کرون، اجراهای دستی، زمان اجرا به میلی‌ثانیه و رویدادهای سیستم
+                گزارش متمرکز چرخه‌های پردازش، اجراهای دستی، زمان اجرا و رویدادهای ثبت‌شده در دیتابیس
               </p>
             </div>
           </div>
@@ -423,7 +423,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
               <FileSpreadsheet className="w-4 h-4 text-indigo-600" />
-              <span>آخرین اجراهای ثبت‌شده (Execution Logs)</span>
+              <span>آخرین لاگ‌های اجرایی سیستم</span>
             </h4>
             <span className="text-[11px] text-gray-500 font-mono">
               تعداد: {executionLogs.length} رکورد
@@ -432,19 +432,19 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
           {executionLogs.length === 0 ? (
             <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-6 text-center text-xs text-gray-500">
-              هنوز لاگ اجرایی ثبت نشده است. با اجرای دستی Scraper یا Translator، لاگ‌های لایو در اینجا ظاهر می‌شوند.
+              هنوز لاگ اجرایی ثبت نشده است. با اجرای دستی اسکرپ یا ترجمه، لاگ‌های لایو در اینجا ظاهر می‌شوند.
             </div>
           ) : (
             <div className="overflow-x-auto border border-gray-200 rounded-xl shadow-2xs">
               <table className="w-full text-right text-xs">
                 <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold">
                   <tr>
-                    <th className="px-3.5 py-2.5">نوع وظیفه (Task)</th>
+                    <th className="px-3.5 py-2.5">نوع عملیات</th>
                     <th className="px-3.5 py-2.5">وضعیت</th>
-                    <th className="px-3.5 py-2.5">پردازش / موفق</th>
-                    <th className="px-3.5 py-2.5">زمان اجرا</th>
+                    <th className="px-3.5 py-2.5">موفق / پردازش</th>
+                    <th className="px-3.5 py-2.5">مدت زمان</th>
                     <th className="px-3.5 py-2.5">تاریخ و زمان</th>
-                    <th className="px-3.5 py-2.5">جزئیات / خطا</th>
+                    <th className="px-3.5 py-2.5">توضیحات و خطا</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 bg-white">
@@ -526,20 +526,20 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </div>
           </div>
 
-          {/* Cloudflare D1 Auto-Migration & Schema Guidance */}
+          {/* Database Auto-Optimization Guidance */}
           <div className="bg-amber-50/60 border border-amber-200 rounded-xl p-4 space-y-2 text-xs text-amber-900">
             <h4 className="font-bold text-amber-900 flex items-center gap-1.5">
               <Database className="w-4 h-4 text-amber-700" />
-              <span>راهنمای ساختار و به‌روزرسانی دیتابیس D1</span>
+              <span>راهنمای ساختار و بهینه‌سازی دیتابیس</span>
             </h4>
             <p className="leading-relaxed text-[11px] text-amber-800">
-              کد سیستم مجهز به **Auto-Migration Middleware (<code className="font-bold text-amber-950 font-mono">ensureTablesAndLogs</code>)** است. به محض بیلد و آپلود سورس‌کد روی ورکر، با اولین درخواست شبکه، تمام جداول جدید (<code className="font-bold font-mono">translation_history</code>, <code className="font-bold font-mono">execution_logs</code>, <code className="font-bold font-mono">system_events</code>) و ایندکس‌ها به‌صورت خودکار در D1 ایجاد می‌شوند.
+              سیستم مجهز به **مکانیزم خودکار به‌روزرسانی دیتابیس** است. با هر بار به‌روزرسانی کدها یا انتشار روی بستر ابری ورکر، ساختار جداول و ایندکس‌ها به صورت هوشمند و بدون بروز خطا به‌روز می‌گردند.
             </p>
             <div className="bg-white/80 p-2 rounded-lg border border-amber-200 font-mono text-[10px] text-amber-950 ltr text-left">
               npx wrangler d1 execute news-db --file=schema.sql
             </div>
             <p className="text-[10px] text-amber-700">
-              * اجرای دستور فوق با Wrangler اختیاری است زیرا Worker به صورت خودکار خود-ترمیم و به‌روزرسانی ساختار را انجام می‌دهد.
+              * تمام تغییرات دیتابیس به طور خودکار اعمال می‌شوند و نیاز به اقدام دستی ندارد.
             </p>
           </div>
         </div>

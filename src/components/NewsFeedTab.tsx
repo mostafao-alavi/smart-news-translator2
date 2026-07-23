@@ -619,7 +619,7 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <div className="flex items-center gap-2 text-indigo-700 font-bold text-sm">
                 <History className="w-4 h-4 text-indigo-600" />
-                <span>آرشیو و تاریخچه تغییرات ترجمه خبر (D1 Audit History)</span>
+                <span>آرشیو و تاریخچه نسخه ترجمه‌های این خبر</span>
               </div>
               <button
                 onClick={() => setHistoryArticle(null)}
@@ -630,7 +630,7 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
             </div>
 
             <div className="space-y-1">
-              <span className="text-[11px] text-gray-400 font-mono">Article ID: #{historyArticle.id}</span>
+              <span className="text-[11px] text-gray-500 font-medium">کد خبر: #{historyArticle.id}</span>
               <h4 className="text-xs font-bold text-gray-900 leading-snug">
                 {historyArticle.title}
               </h4>
@@ -640,7 +640,7 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
               {loadingHistory ? (
                 <div className="py-8 text-center text-xs text-indigo-600 flex items-center justify-center gap-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>در حال استخراج سوابق ترجمه از دیتابیس D1...</span>
+                  <span>در حال دریافت سوابق ترجمه از سامانه...</span>
                 </div>
               ) : historyLogs.length === 0 ? (
                 <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-6 text-center text-xs text-gray-500">

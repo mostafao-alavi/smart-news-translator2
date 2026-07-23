@@ -75,7 +75,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
     setIsSubmitting(false);
 
     if (success) {
-      setSuccessMsg(`منبع "${name}" با موفقیت در دیتابیس Cloudflare D1 ذخیره شد.`);
+      setSuccessMsg(`منبع "${name}" با موفقیت ذخیره و فعال شد.`);
       setName('');
       setUrl('');
       setTestResult(null);
@@ -127,7 +127,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
           </div>
           <div>
             <h3 className="text-sm font-bold text-gray-900">افزودن منبع خبری جدید</h3>
-            <p className="text-xs text-gray-500">ذخیره در جدول sources در Cloudflare D1</p>
+            <p className="text-xs text-gray-500">ثبت و ذخیره‌سازی آدرس فید خبری در سامانه</p>
           </div>
         </div>
 
@@ -230,7 +230,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
             className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs py-2.5 rounded-lg transition-colors flex items-center justify-center space-x-1.5 space-x-reverse disabled:opacity-50 shadow-xs"
           >
             <Plus className="w-4 h-4" />
-            <span>{isSubmitting ? 'در حال ثبت در D1...' : 'ثبت منبع در دیتابیس D1'}</span>
+            <span>{isSubmitting ? 'در حال ثبت...' : 'ثبت منبع جدید'}</span>
           </button>
         </form>
 
@@ -293,7 +293,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
               <Globe className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-gray-900">فهرست منابع ثبت‌شده (جدول sources)</h3>
+              <h3 className="text-sm font-bold text-gray-900">فهرست منابع خبری فعال</h3>
               <p className="text-xs text-gray-500">تعداد کل: {sources.length} منبع فعال</p>
             </div>
           </div>
