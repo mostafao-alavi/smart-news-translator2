@@ -192,8 +192,10 @@ export async function translator(env: Env): Promise<{ processed: number; success
           "UPDATE articles SET translation_status = 'processing' WHERE id = ?"
         ).bind(article.id).run();
 
-        const titleResult = await translateTextWithAI(env, article.title, 'english', 'persian');
-        const contentResult = await translateTextWithAI(env, article.content, 'english', 'persian');
+        const [titleResult, contentResult] = await Promise.all([
+          translateTextWithAI(env, article.title, 'english', 'persian'),
+          translateTextWithAI(env, article.content, 'english', 'persian'),
+        ]);
 
         const modelUsed = titleResult.modelUsed || contentResult.modelUsed || '@cf/meta/m2m100-1.2b';
 

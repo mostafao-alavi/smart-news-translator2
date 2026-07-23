@@ -14,6 +14,10 @@ import {
   Trash2,
   Plus,
   Send,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  Loader2,
 } from 'lucide-react';
 
 interface NewsFeedTabProps {
@@ -45,11 +49,50 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [translatingId, setTranslatingId] = useState<number | null>(null);
 
+  // Lazy loading article detail state
+  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
+  const [detailsMap, setDetailsMap] = useState<Record<number, { content?: string; translated_content?: string }>>({});
+  const [loadingDetailId, setLoadingDetailId] = useState<number | null>(null);
+
   // Custom article form state
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [customTitle, setCustomTitle] = useState('');
   const [customContent, setCustomContent] = useState('');
   const [isSubmittingCustom, setIsSubmittingCustom] = useState(false);
+
+  const toggleExpandArticle = async (id: number) => {
+    if (expandedIds.has(id)) {
+      const next = new Set(expandedIds);
+      next.delete(id);
+      setExpandedIds(next);
+      return;
+    }
+
+    const next = new Set(expandedIds);
+    next.add(id);
+    setExpandedIds(next);
+
+    if (!detailsMap[id]) {
+      setLoadingDetailId(id);
+      try {
+        const res = await fetch(`/api/news/${id}`);
+        const json = await res.json();
+        if (json.success && json.data) {
+          setDetailsMap((prev) => ({
+            ...prev,
+            [id]: {
+              content: json.data.content,
+              translated_content: json.data.translated_content,
+            },
+          }));
+        }
+      } catch (e) {
+        console.error('Error fetching article detail:', e);
+      } finally {
+        setLoadingDetailId(null);
+      }
+    }
+  };
 
   const handleCopy = (id: number, text: string) => {
     navigator.clipboard.writeText(text);
@@ -217,6 +260,12 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
             const isProcessing = item.translation_status === 'processing';
             const isSingleTranslating = translatingId === item.id;
 
+            const isExpanded = expandedIds.has(item.id);
+            const isLoadingThisDetail = loadingDetailId === item.id;
+            const detail = detailsMap[item.id];
+            const translatedText = detail?.translated_content ?? item.translated_content;
+            const originalContentText = detail?.content ?? item.content;
+
             return (
               <div
                 key={item.id}
@@ -298,16 +347,17 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
                       <div className="flex items-center justify-between">
                         <span className="text-orange-700 text-xs font-semibold flex items-center gap-1">
                           <Sparkles className="w-3.5 h-3.5" />
-                          نسخه فارسی (ترجمه‌شده با Workers AI / M2M100)
+                          نسخه فارسی (ترجمه‌شده با Workers AI)
                         </span>
 
                         <button
-                          onClick={() =>
+                          onClick={() => {
+                            const trContent = detailsMap[item.id]?.translated_content || item.translated_content || '';
                             handleCopy(
                               item.id,
-                              `${item.translated_title}\n\n${item.translated_content || ''}`
-                            )
-                          }
+                              `${item.translated_title}\n\n${trContent}`
+                            );
+                          }}
                           className="text-gray-600 hover:text-orange-700 text-xs flex items-center gap-1 px-2 py-1 rounded bg-white border border-gray-200 shadow-2xs"
                         >
                           {copiedId === item.id ? (
@@ -328,10 +378,22 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
                         {item.translated_title}
                       </h3>
 
-                      {item.translated_content && (
-                        <p className="text-xs sm:text-sm text-gray-700 leading-relaxed pt-1">
-                          {item.translated_content}
-                        </p>
+                      {/* Lazy Loaded Translated Content */}
+                      {isExpanded && (
+                        <div className="pt-2 border-t border-orange-200/60 mt-2">
+                          {isLoadingThisDetail ? (
+                            <div className="flex items-center gap-2 text-xs text-orange-600 py-2">
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>در حال دریافت متن کامل ترجمه از دیتابیس D1 (Lazy Loading)...</span>
+                            </div>
+                          ) : translatedText ? (
+                            <p className="text-xs sm:text-sm text-gray-700 leading-relaxed pt-1 whitespace-pre-line">
+                              {translatedText}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-gray-500 italic">متن کامل برای این ترجمه موجود نیست.</p>
+                          )}
+                        </div>
                       )}
                     </div>
                   ) : (
@@ -370,6 +432,47 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
                         <span>مشاهده منبع</span>
                       </a>
                     </div>
+
+                    {/* Lazy Loaded Original Content */}
+                    {isExpanded && (
+                      <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-1">
+                        <div className="text-[11px] font-semibold text-gray-500 flex items-center gap-1">
+                          <FileText className="w-3 h-3" />
+                          <span>متن کامل انگلیسی (Original Content):</span>
+                        </div>
+                        {isLoadingThisDetail ? (
+                          <div className="flex items-center gap-2 text-xs text-gray-500 py-1">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>بارگذاری محتوا...</span>
+                          </div>
+                        ) : originalContentText ? (
+                          <p className="text-xs text-gray-700 ltr text-left leading-relaxed whitespace-pre-line">
+                            {originalContentText}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-gray-400 italic ltr text-left">متن بدنه انگلیسی ثبت نشده است.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Lazy Loading Expand/Collapse Toggle Button */}
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      onClick={() => toggleExpandArticle(item.id)}
+                      className="text-xs font-medium text-slate-600 hover:text-orange-600 bg-slate-100 hover:bg-orange-50 border border-slate-200 hover:border-orange-200 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+                    >
+                      {isLoadingThisDetail ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-500" />
+                      ) : isExpanded ? (
+                        <ChevronUp className="w-3.5 h-3.5" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      )}
+                      <span>
+                        {isExpanded ? 'بستن متن کامل خبر' : 'مطالعه متن کامل (Lazy Loading)'}
+                      </span>
+                    </button>
                   </div>
                 </div>
               </div>

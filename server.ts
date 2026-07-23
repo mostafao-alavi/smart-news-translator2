@@ -167,16 +167,21 @@ async function translateTextToPersian(text: string, targetLang: string = 'persia
 
 // ==================== API ROUTE HANDLERS ====================
 
-// GET /api/news
-app.get('/api/news', (req, res) => {
+// GET /api/news & GET /api/articles (Lightweight feed payload without heavy body content)
+const handleFetchNewsList = (req: any, res: any) => {
   try {
+    const rawLimit = req.query.limit;
+    let limit = parseInt(rawLimit || '15', 10);
+    if (isNaN(limit) || limit < 1) limit = 15;
+    if (limit > 50) limit = 50;
+
     const joinedNews = articles
       .slice()
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-      .slice(0, 10)
-      .map((article) => {
-        const source = sources.find((s) => s.id === article.source_id);
-        const translation = translations.find((t) => t.article_id === article.id);
+      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, limit)
+      .map((article: any) => {
+        const source = sources.find((s: any) => s.id === article.source_id);
+        const translation = translations.find((t: any) => t.article_id === article.id);
 
         return {
           id: article.id,
@@ -184,17 +189,16 @@ app.get('/api/news', (req, res) => {
           source_name: source ? source.name : 'Unknown Source',
           original_url: article.original_url,
           title: article.title,
-          content: article.content,
           published_at: article.published_at,
           created_at: article.created_at,
           translation_status: article.translation_status,
           translated_title: translation ? translation.translated_title : null,
-          translated_content: translation ? translation.translated_content : null,
           translated_at: translation ? translation.translated_at : null,
           model_used: translation ? translation.model_used || '@cf/meta/m2m100-1.2b' : null,
         };
       });
 
+    res.setHeader('Cache-Control', 'public, max-age=15, s-maxage=30');
     res.json({
       success: true,
       data: joinedNews,
@@ -207,7 +211,49 @@ app.get('/api/news', (req, res) => {
       error: err.message || 'Error fetching news',
     });
   }
-});
+};
+
+app.get('/api/news', handleFetchNewsList);
+app.get('/api/articles', handleFetchNewsList);
+
+// GET /api/news/:id & GET /api/articles/:id (Lazy load full article detail)
+const handleFetchArticleDetail = (req: any, res: any) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const article = articles.find((a: any) => a.id === id);
+
+    if (!article) {
+      return res.status(404).json({ success: false, data: null, error: 'خبر یافت نشد' });
+    }
+
+    const source = sources.find((s: any) => s.id === article.source_id);
+    const translation = translations.find((t: any) => t.article_id === article.id);
+
+    const detail = {
+      id: article.id,
+      source_id: article.source_id,
+      source_name: source ? source.name : 'Unknown Source',
+      original_url: article.original_url,
+      title: article.title,
+      content: article.content,
+      published_at: article.published_at,
+      created_at: article.created_at,
+      translation_status: article.translation_status,
+      translated_title: translation ? translation.translated_title : null,
+      translated_content: translation ? translation.translated_content : null,
+      translated_at: translation ? translation.translated_at : null,
+      model_used: translation ? translation.model_used || '@cf/meta/m2m100-1.2b' : null,
+    };
+
+    res.setHeader('Cache-Control', 'public, max-age=30, s-maxage=60');
+    res.json({ success: true, data: detail, error: null });
+  } catch (err: any) {
+    res.status(500).json({ success: false, data: null, error: err.message });
+  }
+};
+
+app.get('/api/news/:id', handleFetchArticleDetail);
+app.get('/api/articles/:id', handleFetchArticleDetail);
 
 // GET /api/sources
 app.get('/api/sources', (req, res) => {

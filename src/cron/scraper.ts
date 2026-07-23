@@ -110,10 +110,9 @@ export async function scraper(env: Env): Promise<{ scrapedSources: number; inser
         const xmlText = await response.text();
         const parsedArticles = parseRssXml(xmlText);
 
-        for (const item of parsedArticles) {
-          try {
-            // INSERT OR IGNORE based on unique constraint on original_url
-            const insertResult = await env.DB.prepare(`
+        if (parsedArticles.length > 0) {
+          const stmts = parsedArticles.map((item) =>
+            env.DB.prepare(`
               INSERT OR IGNORE INTO articles (
                 source_id, 
                 original_url, 
@@ -129,13 +128,14 @@ export async function scraper(env: Env): Promise<{ scrapedSources: number; inser
               item.title,
               item.content,
               item.publishedAt
-            ).run();
+            )
+          );
 
-            if (insertResult.meta.changes > 0) {
+          const batchResults = await env.DB.batch(stmts);
+          for (const res of batchResults) {
+            if (res.meta && res.meta.changes > 0) {
               insertedCount++;
             }
-          } catch (insertError: any) {
-            // Ignore single row insert failures
           }
         }
       } catch (sourceErr: any) {

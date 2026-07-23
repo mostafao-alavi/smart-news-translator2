@@ -36,14 +36,14 @@ export interface JoinedArticleNews {
   source_name: string;
   original_url: string;
   title: string;
-  content: string;
+  content?: string | null;
   published_at: string;
   created_at: string;
   translation_status: string;
   translated_title: string | null;
-  translated_content: string | null;
+  translated_content?: string | null;
   translated_at: string | null;
-  model_used: string | null;
+  model_used?: string | null;
 }
 
 export interface ApiResponse<T = any> {
@@ -69,6 +69,7 @@ export interface D1PreparedStatement {
 
 export interface D1Database {
   prepare(query: string): D1PreparedStatement;
+  batch<T = unknown>(statements: D1PreparedStatement[]): Promise<{ results?: T[]; meta: { changes: number; last_row_id?: number | string } }[]>;
 }
 
 export interface ScheduledEvent {

@@ -11,9 +11,85 @@ api.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization'],
 }));
 
-// GET /api/news - Fetch latest 10 news articles joined with sources and translations
-api.get('/news', async (c) => {
+let indexesEnsured = false;
+export async function ensureIndexes(db: any) {
+  if (indexesEnsured || !db) return;
   try {
+    indexesEnsured = true;
+    await db.batch([
+      db.prepare('CREATE INDEX IF NOT EXISTS idx_articles_created_at ON articles(created_at DESC);'),
+      db.prepare('CREATE INDEX IF NOT EXISTS idx_articles_status ON articles(translation_status);'),
+      db.prepare('CREATE INDEX IF NOT EXISTS idx_articles_source_id ON articles(source_id);'),
+      db.prepare('CREATE INDEX IF NOT EXISTS idx_translations_model ON translations(model_used);'),
+      db.prepare('CREATE INDEX IF NOT EXISTS idx_translations_ai_model ON translations(ai_model);'),
+    ]);
+  } catch (err) {
+    console.warn('Index initialization check:', err);
+  }
+}
+
+// Auto-run index check middleware
+api.use('*', async (c, next) => {
+  ensureIndexes(c.env.DB).catch(() => {});
+  await next();
+});
+
+// Helper for lightweight news list fetching (no bulk text transfer)
+const handleFetchNewsList = async (c: any) => {
+  try {
+    const rawLimit = c.req.query('limit');
+    let limit = parseInt(rawLimit || '15', 10);
+    if (isNaN(limit) || limit < 1) limit = 15;
+    if (limit > 50) limit = 50;
+
+    const query = `
+      SELECT 
+        articles.id,
+        articles.source_id,
+        sources.name AS source_name,
+        articles.original_url,
+        articles.title,
+        articles.published_at,
+        articles.created_at,
+        articles.translation_status,
+        translations.translated_title,
+        translations.translated_at,
+        COALESCE(translations.ai_model, translations.model_used) AS model_used
+      FROM articles
+      LEFT JOIN sources ON articles.source_id = sources.id
+      LEFT JOIN translations ON articles.id = translations.article_id
+      ORDER BY articles.created_at DESC
+      LIMIT ?
+    `;
+
+    const { results } = (await c.env.DB.prepare(query).bind(limit).all()) as { results: JoinedArticleNews[] };
+
+    const response: ApiResponse<JoinedArticleNews[]> = {
+      success: true,
+      data: results || [],
+      error: null,
+    };
+
+    c.header('Cache-Control', 'public, max-age=15, s-maxage=30');
+    return c.json(response, 200);
+  } catch (err: any) {
+    const response: ApiResponse<null> = {
+      success: false,
+      data: null,
+      error: err.message || 'Error fetching news articles',
+    };
+    return c.json(response, 500);
+  }
+};
+
+// GET /api/news & GET /api/articles - Fetch lightweight feed without heavy body payloads
+api.get('/news', handleFetchNewsList);
+api.get('/articles', handleFetchNewsList);
+
+// Helper for single article detailed fetch (Lazy Loading full content)
+const handleFetchArticleDetail = async (c: any) => {
+  try {
+    const id = c.req.param('id');
     const query = `
       SELECT 
         articles.id,
@@ -32,28 +108,25 @@ api.get('/news', async (c) => {
       FROM articles
       LEFT JOIN sources ON articles.source_id = sources.id
       LEFT JOIN translations ON articles.id = translations.article_id
-      ORDER BY articles.created_at DESC
-      LIMIT 10
+      WHERE articles.id = ?
     `;
 
-    const { results } = await c.env.DB.prepare(query).all<JoinedArticleNews>();
+    const article = (await c.env.DB.prepare(query).bind(id).first()) as JoinedArticleNews | null;
 
-    const response: ApiResponse<JoinedArticleNews[]> = {
-      success: true,
-      data: results || [],
-      error: null,
-    };
+    if (!article) {
+      return c.json({ success: false, data: null, error: 'خبر یافت نشد' }, 404);
+    }
 
-    return c.json(response, 200);
+    c.header('Cache-Control', 'public, max-age=30, s-maxage=60');
+    return c.json({ success: true, data: article, error: null }, 200);
   } catch (err: any) {
-    const response: ApiResponse<null> = {
-      success: false,
-      data: null,
-      error: err.message || 'Error fetching news articles',
-    };
-    return c.json(response, 500);
+    return c.json({ success: false, data: null, error: err.message }, 500);
   }
-});
+};
+
+// GET /api/news/:id & GET /api/articles/:id - Lazy load full text content
+api.get('/news/:id', handleFetchArticleDetail);
+api.get('/articles/:id', handleFetchArticleDetail);
 
 // POST /api/sources - Add a new RSS news source
 api.post('/sources', async (c) => {
@@ -125,6 +198,7 @@ api.get('/sources', async (c) => {
       data: results || [],
       error: null,
     };
+    c.header('Cache-Control', 'public, max-age=60, s-maxage=300');
     return c.json(response, 200);
   } catch (err: any) {
     const response: ApiResponse<null> = {
@@ -161,10 +235,17 @@ api.post('/trigger-translator', async (c) => {
 // GET /api/db-status - Detailed D1 Database connection metrics
 api.get('/db-status', async (c) => {
   try {
-    const sourcesCountRes = await c.env.DB.prepare('SELECT COUNT(*) as count FROM sources').first<{ count: number }>();
-    const articlesCountRes = await c.env.DB.prepare('SELECT COUNT(*) as count FROM articles').first<{ count: number }>();
-    const translationsCountRes = await c.env.DB.prepare('SELECT COUNT(*) as count FROM translations').first<{ count: number }>();
-    const pendingCountRes = await c.env.DB.prepare("SELECT COUNT(*) as count FROM articles WHERE translation_status = 'pending'").first<{ count: number }>();
+    const batchRes = await c.env.DB.batch<{ count: number }>([
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM sources'),
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM articles'),
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM translations'),
+      c.env.DB.prepare("SELECT COUNT(*) as count FROM articles WHERE translation_status = 'pending'"),
+    ]);
+
+    const sourcesCountRes = batchRes[0]?.results?.[0];
+    const articlesCountRes = batchRes[1]?.results?.[0];
+    const translationsCountRes = batchRes[2]?.results?.[0];
+    const pendingCountRes = batchRes[3]?.results?.[0];
 
     return c.json({
       success: true,
@@ -189,9 +270,11 @@ api.get('/db-status', async (c) => {
 api.delete('/sources/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM translations WHERE article_id IN (SELECT id FROM articles WHERE source_id = ?)').bind(id).run();
-    await c.env.DB.prepare('DELETE FROM articles WHERE source_id = ?').bind(id).run();
-    await c.env.DB.prepare('DELETE FROM sources WHERE id = ?').bind(id).run();
+    await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM translations WHERE article_id IN (SELECT id FROM articles WHERE source_id = ?)').bind(id),
+      c.env.DB.prepare('DELETE FROM articles WHERE source_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM sources WHERE id = ?').bind(id),
+    ]);
     return c.json({ success: true, data: { deletedId: id }, error: null }, 200);
   } catch (err: any) {
     return c.json({ success: false, data: null, error: err.message }, 500);
@@ -202,8 +285,10 @@ api.delete('/sources/:id', async (c) => {
 api.delete('/news/:id', async (c) => {
   try {
     const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM translations WHERE article_id = ?').bind(id).run();
-    await c.env.DB.prepare('DELETE FROM articles WHERE id = ?').bind(id).run();
+    await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM translations WHERE article_id = ?').bind(id),
+      c.env.DB.prepare('DELETE FROM articles WHERE id = ?').bind(id),
+    ]);
     return c.json({ success: true, data: { deletedId: id }, error: null }, 200);
   } catch (err: any) {
     return c.json({ success: false, data: null, error: err.message }, 500);
@@ -361,27 +446,18 @@ api.post('/sources/test-feed', async (c) => {
 // GET /api/stats - Get count of sources, articles, and translations
 api.get('/stats', async (c) => {
   try {
-    const sourcesCountRes = await c.env.DB.prepare(
-      'SELECT COUNT(*) as count FROM sources'
-    ).first<{ count: number }>();
-
-    const articlesCountRes = await c.env.DB.prepare(
-      'SELECT COUNT(*) as count FROM articles'
-    ).first<{ count: number }>();
-
-    const translationsCountRes = await c.env.DB.prepare(
-      'SELECT COUNT(*) as count FROM translations'
-    ).first<{ count: number }>();
-
-    const pendingCountRes = await c.env.DB.prepare(
-      "SELECT COUNT(*) as count FROM articles WHERE translation_status = 'pending'"
-    ).first<{ count: number }>();
+    const batchRes = await c.env.DB.batch<{ count: number }>([
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM sources'),
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM articles'),
+      c.env.DB.prepare('SELECT COUNT(*) as count FROM translations'),
+      c.env.DB.prepare("SELECT COUNT(*) as count FROM articles WHERE translation_status = 'pending'"),
+    ]);
 
     const stats: StatsData = {
-      sources_count: sourcesCountRes?.count || 0,
-      articles_count: articlesCountRes?.count || 0,
-      translations_count: translationsCountRes?.count || 0,
-      pending_translations_count: pendingCountRes?.count || 0,
+      sources_count: batchRes[0]?.results?.[0]?.count || 0,
+      articles_count: batchRes[1]?.results?.[0]?.count || 0,
+      translations_count: batchRes[2]?.results?.[0]?.count || 0,
+      pending_translations_count: batchRes[3]?.results?.[0]?.count || 0,
     };
 
     const response: ApiResponse<StatsData> = {
@@ -390,6 +466,7 @@ api.get('/stats', async (c) => {
       error: null,
     };
 
+    c.header('Cache-Control', 'public, max-age=10, s-maxage=30');
     return c.json(response, 200);
   } catch (err: any) {
     const response: ApiResponse<null> = {

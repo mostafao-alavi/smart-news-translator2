@@ -32,6 +32,11 @@ CREATE TABLE IF NOT EXISTS translations (
   FOREIGN KEY (article_id) REFERENCES articles(id)
 );
 
+-- Performance Optimization Indexes
+CREATE INDEX IF NOT EXISTS idx_articles_created_at ON articles(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_articles_status ON articles(translation_status);
+CREATE INDEX IF NOT EXISTS idx_articles_source_id ON articles(source_id);
+
 -- Seed initial RSS sources
 INSERT OR IGNORE INTO sources (name, url, language) VALUES 
 ('BBC World News', 'http://feeds.bbci.co.uk/news/world/rss.xml', 'en'),

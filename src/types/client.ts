@@ -4,13 +4,14 @@ export interface JoinedArticleNews {
   source_name: string;
   original_url: string;
   title: string;
-  content: string;
+  content?: string | null;
   published_at: string;
   created_at: string;
   translation_status: 'pending' | 'processing' | 'completed' | 'failed';
   translated_title: string | null;
-  translated_content: string | null;
+  translated_content?: string | null;
   translated_at: string | null;
+  model_used?: string | null;
 }
 
 export interface SourceItem {
