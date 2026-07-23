@@ -1,4 +1,62 @@
+import * as cheerio from 'cheerio';
 import { Env, Source } from '../types';
+
+/**
+ * Extract full article text from a web page HTML using Cheerio and target selector
+ */
+export async function extractFullArticleText(
+  url: string,
+  sourceSelector?: string
+): Promise<string | null> {
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 CloudflareNewsWorker/1.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+      signal: AbortSignal.timeout(10000), // 10s timeout
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+
+    // Remove unwanted non-article elements
+    $('script, style, nav, footer, header, iframe, noscript, svg, form, button').remove();
+
+    const targetSelector = sourceSelector || 'article, .post-content, .entry-content, .article-content, main, [class*="StoryBody"], [class*="article-body"]';
+
+    let fullText = '';
+    $(targetSelector).each((_, el) => {
+      const text = $(el).text().replace(/\s+/g, ' ').trim();
+      if (text) {
+        fullText += text + '\n\n';
+      }
+    });
+
+    // Fallback to paragraph tags if target selector yields insufficient text
+    if (fullText.trim().length < 100) {
+      let pText = '';
+      $('p').each((_, el) => {
+        const text = $(el).text().replace(/\s+/g, ' ').trim();
+        if (text.length > 20) {
+          pText += text + '\n\n';
+        }
+      });
+      if (pText.trim().length > fullText.trim().length) {
+        fullText = pText;
+      }
+    }
+
+    return fullText.trim().length > 50 ? fullText.trim() : null;
+  } catch (err: any) {
+    console.error(`Error extracting full article text for ${url}:`, err.message);
+    return null;
+  }
+}
 
 /**
  * Lightweight XML tag extractor for RSS (<item>) and Atom (<entry>) feeds.

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/cloudflare-workers';
 import apiRoutes from './api/routes';
-import { scraper } from './cron/scraper';
+import { scraper, extractFullArticleText } from './cron/scraper';
 import { translator } from './cron/translator';
 import { Env, ApiResponse, ScheduledEvent, ExecutionContext, MessageBatch } from './types';
 
@@ -139,9 +139,38 @@ export default {
     } else if (batch.queue === 'news-scrape-queue') {
       for (const message of batch.messages) {
         try {
-          console.log('Processing scrape queue message for feed:', message.body);
+          const { url, sourceSelector, hash, id } = message.body || {};
+          console.log('Processing scrape queue message for feed/article:', url);
+
+          if (url) {
+            // 1. Download HTML and extract full article text using Cheerio
+            const fullText = await extractFullArticleText(url, sourceSelector);
+
+            if (fullText && fullText.length > 50) {
+              const fileHash = hash || `article-${id || Date.now()}`;
+              const filePath = `english/${fileHash}.txt`;
+
+              // 2. Save full text to R2 storage
+              if (env.CONTENT_BUCKET) {
+                await env.CONTENT_BUCKET.put(filePath, fullText);
+              }
+
+              // 3. Dispatch to translate queue
+              if (env.TRANSLATE_QUEUE) {
+                await env.TRANSLATE_QUEUE.send({
+                  id: id,
+                  hash: fileHash,
+                  contentPath: filePath,
+                  text: fullText,
+                });
+              }
+            } else {
+              console.log(`Failed to extract full text for: ${url}`);
+            }
+          }
           message.ack();
         } catch (err) {
+          console.error('Error in news-scrape-queue handler:', err);
           message.retry();
         }
       }
