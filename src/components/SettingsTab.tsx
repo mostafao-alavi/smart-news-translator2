@@ -87,12 +87,14 @@ const API_ENDPOINTS = [
   { method: 'POST', path: '/api/trigger-scraper', title: 'اجرای خودکار Scraper', desc: 'اسکرپ فیدها و افزودن اخبار جدید به D1' },
   { method: 'POST', path: '/api/trigger-translator', title: 'اجرای خودکار Translator', desc: 'ترجمه اخبار pending با Workers AI' },
   { method: 'POST', path: '/api/prune-d1', title: 'پاکسازی D1 (Garbage Collection)', desc: 'حذف متن سنگین اخبار قدیمی‌تر از ۷ روز جهت نگهداری زیر ۵۰۰MB' },
+  { method: 'POST', path: '/api/database/reset', title: 'پاکسازی کلی دیتابیس (Full Database Purge)', desc: 'حذف منابع خبری، اخبار، ترجمه‌ها و لاگ‌های ثبت‌شده در D1' },
   { method: 'POST', path: '/api/clear-cache', title: 'پاکسازی کش سیستم (Clear Cache)', desc: 'پاکسازی کش هدرها، پاسخ‌های HTTP سرور و تنظیم مجدد حافظه موقت' },
 ];
 
 interface SettingsTabProps {
   onTriggerScraper: () => Promise<any>;
   onTriggerTranslator: () => Promise<any>;
+  onResetDatabase?: (options: any) => Promise<any>;
   isTriggeringScraper: boolean;
   isTriggeringTranslator: boolean;
   workerFiles: WorkerFileInfo[];
@@ -101,6 +103,7 @@ interface SettingsTabProps {
 export const SettingsTab: React.FC<SettingsTabProps> = ({
   onTriggerScraper,
   onTriggerTranslator,
+  onResetDatabase,
   isTriggeringScraper,
   isTriggeringTranslator,
   workerFiles,
@@ -113,6 +116,17 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [lastScraperResult, setLastScraperResult] = useState<any>(null);
   const [lastTranslatorResult, setLastTranslatorResult] = useState<any>(null);
   const [isPruning, setIsPruning] = useState<boolean>(false);
+
+  // Full Database Reset State
+  const [resetOptions, setResetOptions] = useState({
+    clearSources: true,
+    clearArticles: true,
+    clearTranslations: true,
+    clearLogs: true,
+  });
+  const [showResetConfirmModal, setShowResetConfirmModal] = useState<boolean>(false);
+  const [isResetting, setIsResetting] = useState<boolean>(false);
+  const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
 
   // Execution Logs and System Events from D1
   const [executionLogs, setExecutionLogs] = useState<ExecutionLogItem[]>([]);
@@ -215,6 +229,52 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       addLog(`❌ D1 Pruning error: ${err.message}`);
     } finally {
       setIsPruning(false);
+    }
+  };
+
+  const handleExecuteReset = async (reseed: boolean = false) => {
+    setIsResetting(true);
+    setResetSuccessMessage(null);
+    addLog(`⚠️ Performing Database Purge... (Sources: ${resetOptions.clearSources}, Articles: ${resetOptions.clearArticles}, Translations: ${resetOptions.clearTranslations}, Logs: ${resetOptions.clearLogs}, Reseed: ${reseed})`);
+
+    try {
+      let res;
+      if (onResetDatabase) {
+        res = await onResetDatabase({
+          clearSources: resetOptions.clearSources,
+          clearArticles: resetOptions.clearArticles,
+          clearTranslations: resetOptions.clearTranslations,
+          clearLogs: resetOptions.clearLogs,
+          reseed,
+        });
+      } else {
+        const response = await fetch('/api/database/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clearSources: resetOptions.clearSources,
+            clearArticles: resetOptions.clearArticles,
+            clearTranslations: resetOptions.clearTranslations,
+            clearLogs: resetOptions.clearLogs,
+            reseed,
+          }),
+        });
+        const json = await response.json();
+        if (json.success) res = json.data;
+      }
+
+      if (res) {
+        addLog(`✅ Database purge completed successfully.`);
+        setResetSuccessMessage('حذف و پاکسازی تمامی داده‌های انتخاب شده از دیتابیس D1 با موفقیت انجام شد.');
+        fetchD1Logs();
+      } else {
+        addLog(`❌ Database purge failed.`);
+      }
+    } catch (err: any) {
+      addLog(`❌ Reset error: ${err.message}`);
+    } finally {
+      setIsResetting(false);
+      setShowResetConfirmModal(false);
     }
   };
 
@@ -369,7 +429,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-emerald-700 flex items-center gap-1.5">
                 <Trash2 className="w-4 h-4" />
-                ۳. مدیریت و پاکسازی D1
+                ۳. نگهداری هوشمند D1
               </span>
               <span className="text-[10px] text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded border border-emerald-200 font-medium">
                 نگهداشت حافظه &lt;500MB
@@ -388,6 +448,143 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               >
                 <Trash2 className={`w-3.5 h-3.5 text-emerald-600 ${isPruning ? 'animate-spin' : ''}`} />
                 <span>{isPruning ? 'در حال پاکسازی...' : 'اجرای پاکسازی D1'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Database Purge & Complete Reset Panel */}
+        <div className="bg-rose-50/40 border border-rose-200/80 rounded-xl p-5 shadow-xs space-y-4 mt-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-rose-100 pb-3">
+            <div className="flex items-center space-x-3 space-x-reverse">
+              <div className="bg-rose-100 text-rose-700 p-2.5 rounded-xl border border-rose-200">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                  <span>پاکسازی و بازنشانی کلی دیتابیس D1 (Database Reset)</span>
+                  <span className="bg-rose-100 text-rose-700 text-xs px-2 py-0.5 rounded font-medium border border-rose-200">
+                    مدیریت کلی داده‌ها
+                  </span>
+                </h3>
+                <p className="text-xs text-gray-600 mt-0.5">
+                  حذف یکجا یا تفکیک‌شده داده‌های ذخیره‌شده شامل منابع خبری، اخبار، ترجمه‌ها و لاگ‌های سیستم
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {resetSuccessMessage && (
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{resetSuccessMessage}</span>
+              </div>
+              <button
+                onClick={() => setResetSuccessMessage(null)}
+                className="text-emerald-600 hover:text-emerald-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <label className={`flex items-center space-x-2.5 space-x-reverse p-3 rounded-xl border cursor-pointer transition-all ${
+              resetOptions.clearSources ? 'bg-white border-rose-300 shadow-2xs' : 'bg-gray-50 border-gray-200 opacity-60'
+            }`}>
+              <input
+                type="checkbox"
+                checked={resetOptions.clearSources}
+                onChange={(e) => setResetOptions({ ...resetOptions, clearSources: e.target.checked })}
+                className="w-4 h-4 text-rose-600 rounded border-gray-300 focus:ring-rose-500"
+              />
+              <div>
+                <div className="text-xs font-bold text-gray-900">منابع خبری فعال</div>
+                <div className="text-[10px] text-gray-500">جدول sources (فیدهای RSS)</div>
+              </div>
+            </label>
+
+            <label className={`flex items-center space-x-2.5 space-x-reverse p-3 rounded-xl border cursor-pointer transition-all ${
+              resetOptions.clearArticles ? 'bg-white border-rose-300 shadow-2xs' : 'bg-gray-50 border-gray-200 opacity-60'
+            }`}>
+              <input
+                type="checkbox"
+                checked={resetOptions.clearArticles}
+                onChange={(e) => setResetOptions({ ...resetOptions, clearArticles: e.target.checked })}
+                className="w-4 h-4 text-rose-600 rounded border-gray-300 focus:ring-rose-500"
+              />
+              <div>
+                <div className="text-xs font-bold text-gray-900">اخبار و صف پردازش</div>
+                <div className="text-[10px] text-gray-500">اخبار دریافت‌شده + اخبار pending</div>
+              </div>
+            </label>
+
+            <label className={`flex items-center space-x-2.5 space-x-reverse p-3 rounded-xl border cursor-pointer transition-all ${
+              resetOptions.clearTranslations ? 'bg-white border-rose-300 shadow-2xs' : 'bg-gray-50 border-gray-200 opacity-60'
+            }`}>
+              <input
+                type="checkbox"
+                checked={resetOptions.clearTranslations}
+                onChange={(e) => setResetOptions({ ...resetOptions, clearTranslations: e.target.checked })}
+                className="w-4 h-4 text-rose-600 rounded border-gray-300 focus:ring-rose-500"
+              />
+              <div>
+                <div className="text-xs font-bold text-gray-900">ترجمه‌های هوشمند AI</div>
+                <div className="text-[10px] text-gray-500">ترجمه‌های انجام‌شده + تاریخچه</div>
+              </div>
+            </label>
+
+            <label className={`flex items-center space-x-2.5 space-x-reverse p-3 rounded-xl border cursor-pointer transition-all ${
+              resetOptions.clearLogs ? 'bg-white border-rose-300 shadow-2xs' : 'bg-gray-50 border-gray-200 opacity-60'
+            }`}>
+              <input
+                type="checkbox"
+                checked={resetOptions.clearLogs}
+                onChange={(e) => setResetOptions({ ...resetOptions, clearLogs: e.target.checked })}
+                className="w-4 h-4 text-rose-600 rounded border-gray-300 focus:ring-rose-500"
+              />
+              <div>
+                <div className="text-xs font-bold text-gray-900">لاگ‌ها و رویدادهای سیستم</div>
+                <div className="text-[10px] text-gray-500">رویدادها + execution_logs</div>
+              </div>
+            </label>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-rose-100">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setResetOptions({ clearSources: true, clearArticles: true, clearTranslations: true, clearLogs: true })}
+                className="text-[11px] text-gray-600 hover:text-gray-900 underline"
+              >
+                انتخاب همه موارد
+              </button>
+              <span className="text-gray-300">•</span>
+              <button
+                onClick={() => setResetOptions({ clearSources: false, clearArticles: true, clearTranslations: true, clearLogs: false })}
+                className="text-[11px] text-gray-600 hover:text-gray-900 underline"
+              >
+                فقط اخبار و ترجمه‌ها
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleExecuteReset(true)}
+                disabled={isResetting}
+                className="bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 text-xs px-3.5 py-2 rounded-xl font-medium transition-all shadow-2xs flex items-center gap-1.5"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-gray-600 ${isResetting ? 'animate-spin' : ''}`} />
+                <span>پاکسازی و بازنشانی نمونه اولیه</span>
+              </button>
+
+              <button
+                onClick={() => setShowResetConfirmModal(true)}
+                disabled={isResetting || (!resetOptions.clearSources && !resetOptions.clearArticles && !resetOptions.clearTranslations && !resetOptions.clearLogs)}
+                className="bg-rose-600 hover:bg-rose-700 text-white text-xs px-4 py-2 rounded-xl font-bold transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>پاکسازی موارد انتخاب شده</span>
               </button>
             </div>
           </div>
@@ -785,6 +982,74 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         )}
       </div>
+
+      {/* Confirmation Modal for Resetting Database */}
+      {showResetConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-xs dir-rtl">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2 text-rose-600 font-bold text-sm">
+                <AlertTriangle className="w-5 h-5" />
+                <span>تایید نهایی پاکسازی دیتابیس D1</span>
+              </div>
+              <button
+                onClick={() => setShowResetConfirmModal(false)}
+                className="text-gray-400 hover:text-gray-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-600 leading-relaxed">
+              آیا مطمئن هستید که می‌خواهید بخش‌های زیر را از دیتابیس به‌طور کامل و غیرقابل بازگشت پاک کنید؟
+            </p>
+
+            <ul className="bg-rose-50/70 border border-rose-200/80 rounded-xl p-3 space-y-2 text-xs text-rose-900">
+              {resetOptions.clearSources && (
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  <span><strong>منابع خبری فعال:</strong> تمام فیدهای RSS ثبت شده</span>
+                </li>
+              )}
+              {resetOptions.clearArticles && (
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  <span><strong>اخبار و صف پردازش:</strong> تمامی اخبار دریافت شده و معلق</span>
+                </li>
+              )}
+              {resetOptions.clearTranslations && (
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  <span><strong>ترجمه‌های هوشمند:</strong> کلیه ترجمه‌های فارسی و تاریخچه AI</span>
+                </li>
+              )}
+              {resetOptions.clearLogs && (
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                  <span><strong>لاگ‌های سیستم:</strong> کلیه لاگ‌های اجرای چرخه‌ها و رویدادها</span>
+                </li>
+              )}
+            </ul>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                onClick={() => setShowResetConfirmModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-gray-600 hover:bg-gray-100 transition-colors cursor-pointer"
+              >
+                انصراف
+              </button>
+              <button
+                onClick={() => handleExecuteReset(false)}
+                disabled={isResetting}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition-colors shadow-sm flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                {isResetting && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                <span>{isResetting ? 'در حال پاکسازی...' : 'تایید و پاکسازی نهایی'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

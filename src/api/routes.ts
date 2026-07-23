@@ -956,4 +956,76 @@ api.all('/clear-cache', async (c) => {
   }, 200);
 });
 
+// POST /api/database/reset - Full/Selective Database Reset
+api.post('/database/reset', async (c) => {
+  try {
+    interface ResetRequestBody {
+      clearSources?: boolean;
+      clearArticles?: boolean;
+      clearTranslations?: boolean;
+      clearLogs?: boolean;
+      target?: string;
+    }
+    const body: ResetRequestBody = await c.req.json<ResetRequestBody>().catch(() => ({ target: 'all' }));
+
+    const isAll = body.target === 'all' || (!body.clearSources && !body.clearArticles && !body.clearTranslations && !body.clearLogs);
+
+    const shouldSources = isAll || !!body.clearSources;
+    const shouldArticles = isAll || !!body.clearArticles;
+    const shouldTranslations = isAll || !!body.clearTranslations;
+    const shouldLogs = isAll || !!body.clearLogs;
+
+    const statements: any[] = [];
+
+    if (shouldTranslations) {
+      statements.push(c.env.DB.prepare('DELETE FROM translations'));
+      statements.push(c.env.DB.prepare('DELETE FROM translation_history'));
+      try { statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'translations'")); } catch {}
+      try { statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'translation_history'")); } catch {}
+    }
+
+    if (shouldArticles) {
+      statements.push(c.env.DB.prepare('DELETE FROM articles'));
+      try { statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'articles'")); } catch {}
+    }
+
+    if (shouldSources) {
+      statements.push(c.env.DB.prepare('DELETE FROM sources'));
+      try { statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'sources'")); } catch {}
+    }
+
+    if (shouldLogs) {
+      statements.push(c.env.DB.prepare('DELETE FROM execution_logs'));
+      statements.push(c.env.DB.prepare('DELETE FROM system_events'));
+      try { statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'execution_logs'")); } catch {}
+      try { statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'system_events'")); } catch {}
+    } else {
+      statements.push(c.env.DB.prepare(
+        "INSERT INTO system_events (event_type, description, created_at) VALUES ('DB_RESET', 'پاکسازی قسمتی یا کلی دیتابیس D1 بر اساس درخواست کاربر انجام شد.', datetime('now'))"
+      ));
+    }
+
+    if (statements.length > 0) {
+      await c.env.DB.batch(statements);
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        message: 'پاکسازی دیتابیس D1 با موفقیت انجام شد.',
+        cleared: {
+          sources: shouldSources,
+          articles: shouldArticles,
+          translations: shouldTranslations,
+          logs: shouldLogs,
+        },
+        timestamp: new Date().toISOString()
+      },
+      error: null,
+    }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
 export default api;

@@ -1113,26 +1113,85 @@ app.post('/api/sources/:id/scrape', async (req, res) => {
   }
 });
 
-// POST /api/reset-db
-app.post('/api/reset-db', (req, res) => {
+// POST /api/database/reset & /api/reset-db - Full or Selective Database Reset
+const handleDatabaseReset = (req: any, res: any) => {
   try {
-    sources = [
-      { id: 1, name: 'BBC World News', url: 'http://feeds.bbci.co.uk/news/world/rss.xml', language: 'en' },
-      { id: 2, name: 'TechCrunch', url: 'https://techcrunch.com/feed/', language: 'en' },
-      { id: 3, name: 'Hacker News', url: 'https://news.ycombinator.com/rss', language: 'en' },
-    ];
-    nextSourceId = 4;
-    seedInitialData();
+    const { clearSources, clearArticles, clearTranslations, clearLogs, target, reseed } = req.body || {};
+    const isAll = target === 'all' || (!clearSources && !clearArticles && !clearTranslations && !clearLogs);
+
+    const shouldSources = isAll || !!clearSources;
+    const shouldArticles = isAll || !!clearArticles;
+    const shouldTranslations = isAll || !!clearTranslations;
+    const shouldLogs = isAll || !!clearLogs;
+
+    let clearedInfo = {
+      sourcesCount: 0,
+      articlesCount: 0,
+      translationsCount: 0,
+      logsCount: 0,
+    };
+
+    if (shouldTranslations) {
+      clearedInfo.translationsCount = translations.length;
+      translations = [];
+      translationHistory = [];
+      nextTranslationId = 1;
+      nextHistoryId = 1;
+    }
+
+    if (shouldArticles) {
+      clearedInfo.articlesCount = articles.length;
+      articles = [];
+      nextArticleId = 1;
+    }
+
+    if (shouldSources) {
+      clearedInfo.sourcesCount = sources.length;
+      sources = [];
+      nextSourceId = 1;
+    }
+
+    if (shouldLogs) {
+      clearedInfo.logsCount = executionLogs.length + systemEvents.length;
+      executionLogs = [];
+      systemEvents = [];
+      nextLogId = 1;
+      nextEventId = 1;
+    } else {
+      systemEvents.unshift({
+        id: nextEventId++,
+        event_type: 'DB_RESET',
+        description: 'پاکسازی اطلاعات دیتابیس بر اساس درخواست کاربر با موفقیت انجام شد.',
+        created_at: new Date().toISOString(),
+      });
+    }
+
+    if (reseed) {
+      seedInitialData();
+    }
 
     res.json({
       success: true,
-      data: { message: 'دیتابیس D1 با موفقیت به حالت اولیه بازنشانی شد' },
+      data: {
+        message: 'پاکسازی و بازنشانی داده‌های دیتابیس با موفقیت انجام شد.',
+        cleared: {
+          sources: shouldSources,
+          articles: shouldArticles,
+          translations: shouldTranslations,
+          logs: shouldLogs,
+        },
+        clearedInfo,
+        timestamp: new Date().toISOString(),
+      },
       error: null,
     });
   } catch (err: any) {
     res.status(500).json({ success: false, data: null, error: err.message });
   }
-});
+};
+
+app.post('/api/database/reset', handleDatabaseReset);
+app.post('/api/reset-db', handleDatabaseReset);
 app.post('/api/trigger-translator', async (req, res) => {
   const startTime = Date.now();
   try {

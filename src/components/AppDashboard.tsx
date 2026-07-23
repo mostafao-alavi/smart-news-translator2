@@ -332,6 +332,32 @@ export const AppDashboard: React.FC = () => {
     return null;
   };
 
+  // Reset / Purge Database via POST /api/database/reset
+  const handleResetDatabase = async (options: {
+    clearSources?: boolean;
+    clearArticles?: boolean;
+    clearTranslations?: boolean;
+    clearLogs?: boolean;
+    target?: string;
+    reseed?: boolean;
+  }) => {
+    try {
+      const res = await fetch('/api/database/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(options),
+      });
+      const json = await res.json();
+      if (json.success) {
+        refreshAllData();
+        return json.data;
+      }
+    } catch (e) {
+      console.error('Error resetting database:', e);
+    }
+    return null;
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dir-rtl font-sans antialiased selection:bg-orange-500 selection:text-white">
       {/* Navigation Header */}
@@ -383,6 +409,7 @@ export const AppDashboard: React.FC = () => {
           <SettingsTab
             onTriggerScraper={handleTriggerScraper}
             onTriggerTranslator={handleTriggerTranslator}
+            onResetDatabase={handleResetDatabase}
             isTriggeringScraper={isTriggeringScraper}
             isTriggeringTranslator={isTriggeringTranslator}
             workerFiles={workerFiles}
