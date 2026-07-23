@@ -97,14 +97,14 @@ export const LandingPage: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
           <div className="text-center max-w-3xl mx-auto space-y-5 sm:space-y-6">
             {/* Top Pill */}
-            <div className="inline-flex items-center gap-2 bg-white border border-orange-200/90 shadow-2xs px-3.5 py-1.5 rounded-full text-xs font-bold text-orange-700 animate-in fade-in">
+            <div className="inline-flex items-center gap-2 bg-white border border-orange-200/90 shadow-2xs px-4 py-1.5 rounded-full text-xs font-bold text-orange-700 animate-in fade-in">
               <Sparkles className="w-3.5 h-3.5 text-orange-500 shrink-0" />
-              <span>سامانه تخصصی ۱۰۰۰ دستان • موتور هوشمند پایش و ترجمه اخبار</span>
+              <span>پلتفرم ۱۰۰۰ دستان • پنجره‌ای گشوده به مرزهای دانایی و اندیشه جهانی</span>
             </div>
 
             {/* Main Title */}
-            <h1 className="text-3xl sm:text-5xl font-black text-gray-900 tracking-tight leading-[1.2] sm:leading-[1.25]">
-              پایش خودکار فیدهای خبری بین‌الملل و ترجمه هوشمند با{' '}
+            <h1 className="text-3xl sm:text-5xl font-black text-gray-900 tracking-tight leading-[1.25] sm:leading-[1.3]">
+              شکستن مرزهای زبانی و پیوند اندیشه‌ها با{' '}
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-600 via-amber-600 to-orange-500">
                 «۱۰۰۰ دستان»
               </span>
@@ -112,7 +112,7 @@ export const LandingPage: React.FC = () => {
 
             {/* Subtitle */}
             <p className="text-sm sm:text-lg text-gray-600 leading-relaxed font-normal max-w-2xl mx-auto">
-              پلتفرم جامع ۱۰۰۰ دستان، فیدهای RSS/Atom خبرگزاری‌های برتر جهان را به صورت زنده استخراج کرده و با مدل‌های پیشرفته هوش مصنوعی به فارسی روان ترجمه و ارزیابی می‌کند.
+              همچون افسانه‌های هزار و یک شب که روایات جهان را گرد هم می‌آورد، «۱۰۰۰ دستان» دستاوردهای علمی، فناوری و خبری جهان را از میان هزاران سرچشمه می‌جوید و با جادوی هوش مصنوعی به زبان فارسی روان در دسترس شما می‌نهد.
             </p>
 
             {/* Hero Buttons */}
@@ -255,13 +255,13 @@ export const LandingPage: React.FC = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-2xl mx-auto space-y-3 mb-12 sm:mb-16">
             <span className="text-xs font-bold text-orange-600 bg-orange-50 border border-orange-200 px-3 py-1 rounded-full">
-              قابلیت‌های کلیدی ۱۰۰۰ دستان
+              رویکرد ۱۰۰۰ دستان به دانش جهانی
             </span>
             <h2 className="text-2xl sm:text-4xl font-black text-gray-900 tracking-tight">
-              چرا پلتفرم «۱۰۰۰ دستان» منحصر به فرد است؟
+              چرا آگاهی بی‌مرز اهمیت دارد؟
             </h2>
             <p className="text-xs sm:text-sm text-gray-600 leading-relaxed">
-              طراحی شده بر اساس آخرین استانداردهای فرانت‌اند و معماری رایانش ابری بدون سرور (Serverless Edge)
+              طراحی‌شده برای متفکران، پژوهشگران و شیفتگان آگاهی که می‌خواهند بدون محدودیت‌های زبانی،نبض رویدادهای جهان را در دست داشته باشند.
             </p>
           </div>
 
@@ -271,9 +271,9 @@ export const LandingPage: React.FC = () => {
               <div className="bg-orange-500 text-white p-3 rounded-xl w-fit group-hover:scale-110 transition-transform">
                 <Rss className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-gray-900">پایش هوشمند RSS & Atom</h3>
+              <h3 className="text-base font-bold text-gray-900">جست‌وجوی بی‌وقفه در هزاران سرچشمه</h3>
               <p className="text-xs text-gray-600 leading-relaxed">
-                استخراج خودکار آخرین اخبار از صدها آدرس فید خبری با امکان تعریف سلکتور CSS اختصاصی و سقف استخراج قابل تنظیم.
+                صدها منبع معتبر علمی و خبری جهان در یک نقطه‌ی امن و منظم گرد هم می‌آیند تا هیچ روایت ارزشمندی از دید شما پنهان نماند.
               </p>
             </div>
 
@@ -282,9 +282,9 @@ export const LandingPage: React.FC = () => {
               <div className="bg-amber-500 text-white p-3 rounded-xl w-fit group-hover:scale-110 transition-transform">
                 <Languages className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-gray-900">موتور ترجمه اختصاصی AI</h3>
+              <h3 className="text-base font-bold text-gray-900">ترجمه اصیل و وفادار به مفهوم</h3>
               <p className="text-xs text-gray-600 leading-relaxed">
-                استفاده از مدل‌های هوش مصنوعی ابری جهت ترجمه تخصصی، روان و بدون اعوجاج متن‌های انگلیسی و بین‌المللی به فارسی.
+                هوش مصنوعی در ۱۰۰۰ دستان کلمات را صرفاً جایگزین نمی‌کند، بلکه روح متن و ظرایف معنایی آن را به فارسی شیق و خوانا برمی‌گرداند.
               </p>
             </div>
 
@@ -293,9 +293,9 @@ export const LandingPage: React.FC = () => {
               <div className="bg-sky-500 text-white p-3 rounded-xl w-fit group-hover:scale-110 transition-transform">
                 <Database className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-gray-900">پایگاه داده Cloudflare D1</h3>
+              <h3 className="text-base font-bold text-gray-900">گنجینه‌ای سبک و همواره دسترس‌پذیر</h3>
               <p className="text-xs text-gray-600 leading-relaxed">
-                ذخیره‌سازی سریع SQL به همراه سیستم پاکسازی دوره‌ای (Garbage Collection) جهت نگهداری بهینه حجم داده زیر ۵۰۰ مگابایت.
+                استفاده از آخرین دستاوردهای رایانش لبه‌ای (Edge Computing) تا لحظه‌ای که اراده کنید، مطالب بدون تاخیر در اختیار شما باشد.
               </p>
             </div>
 
@@ -304,9 +304,9 @@ export const LandingPage: React.FC = () => {
               <div className="bg-emerald-500 text-white p-3 rounded-xl w-fit group-hover:scale-110 transition-transform">
                 <ShieldCheck className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-gray-900">مدیریت گروهی منابع</h3>
+              <h3 className="text-base font-bold text-gray-900">اختیار کامل در انتخاب ورودی‌ها</h3>
               <p className="text-xs text-gray-600 leading-relaxed">
-                امکان فعال‌سازی، غیرفعال‌سازی موقت، حذف دسته‌جمعی منابع و تست زنده اتصال قبل از ثبت فیدها با رابط کاربری لمسی و بهینه.
+                شما معمار جریان آگاهی خود هستید؛ کانال‌های خبری دلخواه خود را شخصاً انتخاب کنید و نویزهای اضافی را دور بریزید.
               </p>
             </div>
 
@@ -315,9 +315,9 @@ export const LandingPage: React.FC = () => {
               <div className="bg-indigo-500 text-white p-3 rounded-xl w-fit group-hover:scale-110 transition-transform">
                 <Code2 className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-gray-900">خروجی REST API و Hono</h3>
+              <h3 className="text-base font-bold text-gray-900">سازگاری و پیوند با دیگر ابزارها</h3>
               <p className="text-xs text-gray-600 leading-relaxed">
-                ارائه اندپوینت‌های استاندارد JSON با پاسخ‌دهی فوق‌العاده سریع و هدرهای Cache-Control جهت ادغام آسان با اپلیکیشن‌های دیگر.
+                امکان خروجی‌گرفتن روان جهت اشتراک‌گذاری یا ادغام با سامانه‌های پژوهشی و شخصی برای خلق ارزش‌های جدید.
               </p>
             </div>
 
@@ -326,9 +326,9 @@ export const LandingPage: React.FC = () => {
               <div className="bg-rose-500 text-white p-3 rounded-xl w-fit group-hover:scale-110 transition-transform">
                 <Zap className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-bold text-gray-900">۱۰۰٪ سازگار با Free Tier</h3>
+              <h3 className="text-base font-bold text-gray-900">معماری سبز و بهینه</h3>
               <p className="text-xs text-gray-600 leading-relaxed">
-                طراحی شده بر اساس استانداردهای Edge رایگان Cloudflare Pages و Workers با کمترین میزان مصرف حافظه و پهنای باند.
+                ساخته‌شده با رویکردی مدرن و کم‌مصرف، بدون بار اضافی روی سرورها یا سیستم‌های شخصی شما.
               </p>
             </div>
           </div>
@@ -444,19 +444,19 @@ export const LandingPage: React.FC = () => {
       </section>
 
       {/* CTA Footer Section */}
-      <section className="py-16 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 text-white">
+      <section className="py-16 sm:py-20 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 text-white">
         <div className="max-w-4xl mx-auto px-4 text-center space-y-5">
-          <h2 className="text-2xl sm:text-4xl font-black">
-            همین حالا کار با پلتفرم «۱۰۰۰ دستان» را شروع کنید
+          <h2 className="text-2xl sm:text-4xl font-black leading-snug">
+            به جهانِ آگاهی بی‌مرز خوش آمدید
           </h2>
           <p className="text-xs sm:text-sm text-orange-100 max-w-xl mx-auto leading-relaxed">
-            بدون نیاز به پیکربندی پیچیده، فیدهای خبری دلخواه خود را اضافه کنید و از اخبار ترجمه‌شده زنده لذت ببرید.
+            هم‌اکنون گام به دنیای «۱۰۰۰ دستان» بگذارید، فیدهای مورد علاقه‌تان را متصل کنید و روایت‌های جهان را با کیفیتی بی‌نظیر بشنوید.
           </p>
           <button
             onClick={() => navigate('/app')}
             className="bg-white hover:bg-orange-50 text-orange-600 font-black text-sm sm:text-base px-8 py-3.5 rounded-2xl shadow-lg transition-all inline-flex items-center gap-2 min-h-[48px]"
           >
-            <span>ورود مستقیم به داشبورد ۱۰۰۰ دستان</span>
+            <span>ورود به سامانه ۱۰۰۰ دستان</span>
             <ArrowLeft className="w-5 h-5 text-orange-600" />
           </button>
         </div>
