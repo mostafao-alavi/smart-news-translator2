@@ -1,25 +1,47 @@
-name = 'smart-news-translator2'
+name = "smart-news-aggregator"
 main = "src/index.ts"
-# بهروزرسانی به تاریخ جدیدتر برای بهرهمندی از آخرین بهینهسازیهای موتور V8 کلودفلر
-compatibility_date = "2024-07-23"
-# فعالسازی پشتیبانی از ماژولهای Node.js (برای کتابخانههای اسکرپ و پارس RSS بسیار حیاتی است)
+compatibility_date = "2026-07-23"
 compatibility_flags = [ "nodejs_compat" ]
 
 # فعالسازی سیستم جدید لاگینگ کلودفلر برای مانیتورینگ دقیقتر سیستم
 [observability]
 enabled = true
 
-# Cloudflare D1 Database Binding
+# ۱. دیتابیس D1 (فقط برای ذخیره متادیتا، لاگها و اطلاعات کاربران)
 [[d1_databases]]
 binding = "DB"
-database_name = "news-db"
+database_name = "news-metadata-db"
 database_id = "2815bd80-f483-4f9b-872d-93047309ed13"
-# (اختیاری) در صورت نیاز به دیتابیس مجزا برای محیط تست لوکال، آیدی آن را اینجا قرار دهید
-# preview_database_id = "UUID_دیتابیس_تست"
 
-# Cloudflare Workers AI Binding
+# ۲. فضای ابری R2 (برای ذخیره فایل متنی مقالات انگلیسی و ترجمهها)
+[[r2_buckets]]
+binding = "CONTENT_BUCKET"
+bucket_name = "news-articles-storage"
+
+# ۳. مدلهای هوش مصنوعی بومی کلودفلر
 [ai]
 binding = "AI"
+
+# ۴. پیکربندی صفها (Queues)
+# الف: تعریف Worker فعلی به عنوان تولیدکننده پیام (پرتابگر به صف)
+[[queues.producers]]
+binding = "SCRAPE_QUEUE"
+queue = "news-scrape-queue"
+
+[[queues.producers]]
+binding = "TRANSLATE_QUEUE"
+queue = "news-translate-queue"
+
+# ب: تنظیم Worker برای پردازش پیامهای صف (مصرفکننده)
+[[queues.consumers]]
+queue = "news-scrape-queue"
+max_batch_size = 5 # حداکثر ۵ فید همزمان برای جلوگیری از Time-out
+max_concurrency = 2
+
+[[queues.consumers]]
+queue = "news-translate-queue"
+max_batch_size = 1 # ترجمه تکبهتک برای حفظ کیفیت خروجی هوش مصنوعی
+max_concurrency = 1 # کنترل دقیق Rate Limit گوگل
 
 # Cloudflare Workers Assets - Serve Vite React SPA from ./dist
 [assets]
@@ -29,4 +51,5 @@ not_found_handling = "single-page-application"
 # Cron Triggers - Executed every hour
 [triggers]
 crons = ["0 * * * *"]
+
 

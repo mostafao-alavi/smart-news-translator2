@@ -3,7 +3,7 @@ import { serveStatic } from 'hono/cloudflare-workers';
 import apiRoutes from './api/routes';
 import { scraper } from './cron/scraper';
 import { translator } from './cron/translator';
-import { Env, ApiResponse, ScheduledEvent, ExecutionContext } from './types';
+import { Env, ApiResponse, ScheduledEvent, ExecutionContext, MessageBatch } from './types';
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -59,7 +59,7 @@ app.get('*', serveStatic({
   rewriteRequestPath: () => './index.html',
 }));
 
-// Cloudflare Worker export with fetch and scheduled handlers
+// Cloudflare Worker export with fetch, scheduled, and queue handlers
 export default {
   // Fetch event handler for HTTP requests
   fetch: app.fetch,
@@ -86,5 +86,65 @@ export default {
         }
       })()
     );
+  },
+
+  // Queue consumer handler for asynchronous Cloudflare Queues
+  async queue(batch: MessageBatch<any>, env: Env): Promise<void> {
+    console.log(`Processing queue batch for queue: ${batch.queue} (${batch.messages.length} messages)`);
+
+    if (batch.queue === 'news-translate-queue') {
+      for (const message of batch.messages) {
+        try {
+          let rawText = '';
+          if (message.body?.hash && env.CONTENT_BUCKET) {
+            // 1. Read raw text from Cloudflare R2 Bucket
+            const rawFile = await env.CONTENT_BUCKET.get(`english/${message.body.hash}.txt`);
+            if (rawFile) {
+              rawText = await rawFile.text();
+            }
+          } else if (message.body?.text) {
+            rawText = message.body.text;
+          }
+
+          // 2. Fast classification with Cloudflare Workers AI
+          let category = 'technology';
+          if (env.AI && rawText) {
+            try {
+              const categoryResult = await env.AI.run('@cf/facebook/bart-large-mnli', {
+                text: rawText,
+                candidate_labels: ['technology', 'cybersecurity', 'ai', 'business'],
+              });
+              if (categoryResult?.labels?.[0]) {
+                category = categoryResult.labels[0];
+              }
+            } catch (aiErr) {
+              console.warn('Workers AI classification skipped:', aiErr);
+            }
+          }
+
+          // 3. Update metadata & category in D1 Database
+          if (env.DB && message.body?.id) {
+            await env.DB.prepare("UPDATE articles SET status = 'translated', category = ? WHERE id = ?")
+              .bind(category, message.body.id)
+              .run();
+          }
+
+          // Acknowledge task completion
+          message.ack();
+        } catch (err) {
+          console.error('Error processing translate queue message:', err);
+          message.retry();
+        }
+      }
+    } else if (batch.queue === 'news-scrape-queue') {
+      for (const message of batch.messages) {
+        try {
+          console.log('Processing scrape queue message for feed:', message.body);
+          message.ack();
+        } catch (err) {
+          message.retry();
+        }
+      }
+    }
   },
 };

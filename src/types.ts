@@ -72,6 +72,37 @@ export interface D1Database {
   batch<T = unknown>(statements: D1PreparedStatement[]): Promise<{ results?: T[]; meta: { changes: number; last_row_id?: number | string } }[]>;
 }
 
+export interface R2Object {
+  text(): Promise<string>;
+  json<T = any>(): Promise<T>;
+}
+
+export interface R2Bucket {
+  get(key: string): Promise<R2Object | null>;
+  put(key: string, value: string | ArrayBuffer | ReadableStream, options?: any): Promise<any>;
+  delete(key: string): Promise<void>;
+}
+
+export interface QueueMessage<T = any> {
+  id: string;
+  timestamp: Date;
+  body: T;
+  ack(): void;
+  retry(): void;
+}
+
+export interface MessageBatch<T = any> {
+  queue: string;
+  messages: QueueMessage<T>[];
+  ackAll(): void;
+  retryAll(): void;
+}
+
+export interface Queue<T = any> {
+  send(message: T, options?: any): Promise<void>;
+  sendBatch(messages: { body: T }[], options?: any): Promise<void>;
+}
+
 export interface ScheduledEvent {
   cron: string;
   scheduledTime: number;
@@ -86,6 +117,10 @@ export interface ExecutionContext {
 // Cloudflare Workers Environment bindings
 export interface Env {
   DB: D1Database;
-  AI: any;
-  GEMINI_API_KEY?: string;
+  CONTENT_BUCKET: R2Bucket;
+  SCRAPE_QUEUE: Queue;
+  TRANSLATE_QUEUE: Queue;
+  AI: any; // برای دسترسی به Workers AI
+  GEMINI_API_KEY: string; // تزریقشده توسط Secrets Store
+  ADMIN_SECRET: string;
 }
