@@ -19,6 +19,11 @@ export interface SourceItem {
   name: string;
   url: string;
   language: string;
+  category?: string;
+  selector?: string;
+  scrape_limit?: number;
+  is_active?: boolean | number;
+  created_at?: string;
 }
 
 export interface StatsData {

@@ -32,6 +32,11 @@ interface Source {
   name: string;
   url: string;
   language: string;
+  category?: string;
+  selector?: string;
+  scrape_limit?: number;
+  is_active?: boolean | number;
+  created_at?: string;
 }
 
 interface Article {
@@ -538,7 +543,7 @@ app.get('/api/sources', (req, res) => {
 // POST /api/sources
 app.post('/api/sources', (req, res) => {
   try {
-    const { name, url, language } = req.body || {};
+    const { name, url, language, category, selector, scrape_limit, is_active } = req.body || {};
 
     if (!name || !url) {
       return res.status(400).json({
@@ -565,6 +570,11 @@ app.post('/api/sources', (req, res) => {
       name: trimmedName,
       url: trimmedUrl,
       language: language || 'en',
+      category: category || 'general',
+      selector: selector?.trim() || undefined,
+      scrape_limit: typeof scrape_limit === 'number' && scrape_limit > 0 ? scrape_limit : 10,
+      is_active: is_active === false || is_active === 0 ? 0 : 1,
+      created_at: new Date().toISOString(),
     };
 
     sources.push(newSource);
@@ -580,6 +590,84 @@ app.post('/api/sources', (req, res) => {
       data: null,
       error: err.message || 'Error creating source',
     });
+  }
+});
+
+// PUT /api/sources/:id
+app.put('/api/sources/:id', (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const sourceIndex = sources.findIndex((s) => s.id === id);
+    if (sourceIndex === -1) {
+      return res.status(404).json({ success: false, data: null, error: 'منبع یافت نشد' });
+    }
+
+    const { name, url, language, category, selector, scrape_limit, is_active } = req.body || {};
+    const curr = sources[sourceIndex];
+
+    sources[sourceIndex] = {
+      ...curr,
+      name: name ? name.trim() : curr.name,
+      url: url ? url.trim() : curr.url,
+      language: language || curr.language,
+      category: category || curr.category || 'general',
+      selector: selector !== undefined ? (selector ? selector.trim() : undefined) : curr.selector,
+      scrape_limit: typeof scrape_limit === 'number' && scrape_limit > 0 ? scrape_limit : (curr.scrape_limit || 10),
+      is_active: is_active !== undefined ? (is_active ? 1 : 0) : (curr.is_active ?? 1),
+    };
+
+    res.json({ success: true, data: sources[sourceIndex], error: null });
+  } catch (err: any) {
+    res.status(500).json({ success: false, data: null, error: err.message });
+  }
+});
+
+// POST /api/sources/bulk-delete
+app.post('/api/sources/bulk-delete', (req, res) => {
+  try {
+    const { ids } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, data: null, error: 'لیست ID ها نامعتبر است' });
+    }
+
+    const initialLen = sources.length;
+    for (const id of ids) {
+      const idx = sources.findIndex((s) => s.id === id);
+      if (idx !== -1) sources.splice(idx, 1);
+    }
+
+    res.json({
+      success: true,
+      data: { message: `تعداد ${initialLen - sources.length} منبع حذف گردید`, deletedIds: ids },
+      error: null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, data: null, error: err.message });
+  }
+});
+
+// POST /api/sources/bulk-status
+app.post('/api/sources/bulk-status', (req, res) => {
+  try {
+    const { ids, is_active } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ success: false, data: null, error: 'لیست ID ها نامعتبر است' });
+    }
+
+    const val = is_active ? 1 : 0;
+    sources.forEach((s) => {
+      if (ids.includes(s.id!)) {
+        s.is_active = val;
+      }
+    });
+
+    res.json({
+      success: true,
+      data: { message: `وضعیت ${ids.length} منبع بروزرسانی شد`, ids, is_active: val },
+      error: null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, data: null, error: err.message });
   }
 });
 

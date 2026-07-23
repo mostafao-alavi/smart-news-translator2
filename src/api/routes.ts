@@ -22,7 +22,12 @@ export async function ensureTablesAndLogs(db: any) {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL,
           url TEXT NOT NULL UNIQUE,
-          language TEXT DEFAULT 'en'
+          language TEXT DEFAULT 'en',
+          category TEXT DEFAULT 'general',
+          selector TEXT DEFAULT NULL,
+          scrape_limit INTEGER DEFAULT 10,
+          is_active INTEGER DEFAULT 1,
+          created_at TEXT DEFAULT (datetime('now'))
         );
       `),
       db.prepare(`
@@ -90,6 +95,13 @@ export async function ensureTablesAndLogs(db: any) {
       db.prepare('CREATE INDEX IF NOT EXISTS idx_execution_logs_time ON execution_logs(executed_at DESC);'),
       db.prepare('CREATE INDEX IF NOT EXISTS idx_translation_history_article ON translation_history(article_id);'),
     ]);
+
+    // Safe column migrations for existing tables
+    try { await db.prepare("ALTER TABLE sources ADD COLUMN category TEXT DEFAULT 'general'").run(); } catch {}
+    try { await db.prepare("ALTER TABLE sources ADD COLUMN selector TEXT DEFAULT NULL").run(); } catch {}
+    try { await db.prepare("ALTER TABLE sources ADD COLUMN scrape_limit INTEGER DEFAULT 10").run(); } catch {}
+    try { await db.prepare("ALTER TABLE sources ADD COLUMN is_active INTEGER DEFAULT 1").run(); } catch {}
+    try { await db.prepare("ALTER TABLE sources ADD COLUMN created_at TEXT DEFAULT (datetime('now'))").run(); } catch {}
   } catch (err) {
     console.warn('Database table auto-initialization check:', err);
   }
@@ -273,10 +285,18 @@ const handleFetchArticleDetail = async (c: any) => {
 api.get('/news/:id', handleFetchArticleDetail);
 api.get('/articles/:id', handleFetchArticleDetail);
 
-// POST /api/sources - Add a new RSS news source
+// POST /api/sources - Add a new RSS news source with standardized metadata
 api.post('/sources', async (c) => {
   try {
-    const body = await c.req.json<{ name?: string; url?: string; language?: string }>();
+    const body = await c.req.json<{
+      name?: string;
+      url?: string;
+      language?: string;
+      category?: string;
+      selector?: string;
+      scrape_limit?: number;
+      is_active?: boolean | number;
+    }>();
 
     if (!body.name || !body.url) {
       const response: ApiResponse<null> = {
@@ -290,6 +310,10 @@ api.post('/sources', async (c) => {
     const trimmedUrl = body.url.trim();
     const trimmedName = body.name.trim();
     const lang = body.language || 'en';
+    const cat = body.category || 'general';
+    const sel = body.selector?.trim() || null;
+    const limit = typeof body.scrape_limit === 'number' && body.scrape_limit > 0 ? body.scrape_limit : 10;
+    const active = body.is_active === false || body.is_active === 0 ? 0 : 1;
 
     // Check if source URL already exists
     const existing = await c.env.DB.prepare(
@@ -307,14 +331,18 @@ api.post('/sources', async (c) => {
 
     // Insert new source
     const result = await c.env.DB.prepare(
-      'INSERT INTO sources (name, url, language) VALUES (?, ?, ?)'
-    ).bind(trimmedName, trimmedUrl, lang).run();
+      'INSERT INTO sources (name, url, language, category, selector, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).bind(trimmedName, trimmedUrl, lang, cat, sel, limit, active).run();
 
     const newSource: Source = {
       id: result.meta.last_row_id as number,
       name: trimmedName,
       url: trimmedUrl,
       language: lang,
+      category: cat,
+      selector: sel || undefined,
+      scrape_limit: limit,
+      is_active: active,
     };
 
     const response: ApiResponse<Source> = {
@@ -337,13 +365,16 @@ api.post('/sources', async (c) => {
 // GET /api/sources - List all news sources
 api.get('/sources', async (c) => {
   try {
-    const { results } = await c.env.DB.prepare('SELECT id, name, url, language FROM sources ORDER BY id ASC').all<Source>();
+    const { results } = await c.env.DB.prepare(
+      'SELECT id, name, url, language, category, selector, scrape_limit, is_active, created_at FROM sources ORDER BY id ASC'
+    ).all<Source>();
+
     const response: ApiResponse<Source[]> = {
       success: true,
       data: results || [],
       error: null,
     };
-    c.header('Cache-Control', 'public, max-age=60, s-maxage=300');
+    c.header('Cache-Control', 'public, max-age=15, s-maxage=60');
     return c.json(response, 200);
   } catch (err: any) {
     const response: ApiResponse<null> = {
@@ -352,6 +383,92 @@ api.get('/sources', async (c) => {
       error: err.message || 'Error fetching sources',
     };
     return c.json(response, 500);
+  }
+});
+
+// PUT /api/sources/:id - Update source configuration (status, limit, name, etc.)
+api.put('/sources/:id', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const body = await c.req.json<{
+      name?: string;
+      url?: string;
+      language?: string;
+      category?: string;
+      selector?: string;
+      scrape_limit?: number;
+      is_active?: boolean | number;
+    }>();
+
+    const existing = await c.env.DB.prepare('SELECT * FROM sources WHERE id = ?').bind(id).first<Source>();
+    if (!existing) {
+      return c.json({ success: false, data: null, error: 'منبع یافت نشد' }, 404);
+    }
+
+    const name = body.name ? body.name.trim() : existing.name;
+    const url = body.url ? body.url.trim() : existing.url;
+    const language = body.language || existing.language || 'en';
+    const category = body.category || existing.category || 'general';
+    const selector = body.selector !== undefined ? (body.selector ? body.selector.trim() : null) : (existing.selector || null);
+    const scrape_limit = typeof body.scrape_limit === 'number' && body.scrape_limit > 0 ? body.scrape_limit : (existing.scrape_limit || 10);
+    const is_active = body.is_active !== undefined ? (body.is_active ? 1 : 0) : (existing.is_active ?? 1);
+
+    await c.env.DB.prepare(`
+      UPDATE sources 
+      SET name = ?, url = ?, language = ?, category = ?, selector = ?, scrape_limit = ?, is_active = ?
+      WHERE id = ?
+    `).bind(name, url, language, category, selector, scrape_limit, is_active, id).run();
+
+    return c.json({
+      success: true,
+      data: { id: Number(id), name, url, language, category, selector, scrape_limit, is_active },
+      error: null,
+    }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// POST /api/sources/bulk-delete - Bulk delete selected sources
+api.post('/sources/bulk-delete', async (c) => {
+  try {
+    const { ids } = await c.req.json<{ ids: number[] }>();
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return c.json({ success: false, data: null, error: 'لیست شناسه منابع ارسالی نامعتبر است' }, 400);
+    }
+
+    const placeholders = ids.map(() => '?').join(',');
+    await c.env.DB.prepare(`DELETE FROM sources WHERE id IN (${placeholders})`).bind(...ids).run();
+
+    return c.json({
+      success: true,
+      data: { message: `تعداد ${ids.length} منبع با موفقیت حذف گردید`, deletedIds: ids },
+      error: null,
+    }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// POST /api/sources/bulk-status - Bulk toggle active/inactive status
+api.post('/sources/bulk-status', async (c) => {
+  try {
+    const { ids, is_active } = await c.req.json<{ ids: number[]; is_active: boolean }>();
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return c.json({ success: false, data: null, error: 'لیست شناسه منابع ارسالی نامعتبر است' }, 400);
+    }
+
+    const statusVal = is_active ? 1 : 0;
+    const placeholders = ids.map(() => '?').join(',');
+    await c.env.DB.prepare(`UPDATE sources SET is_active = ? WHERE id IN (${placeholders})`).bind(statusVal, ...ids).run();
+
+    return c.json({
+      success: true,
+      data: { message: `وضعیت ${ids.length} منبع بروزرسانی شد`, ids, is_active: statusVal },
+      error: null,
+    }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
   }
 });
 

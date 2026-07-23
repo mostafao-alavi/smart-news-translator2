@@ -142,7 +142,7 @@ export async function scraper(env: Env): Promise<{ scrapedSources: number; inser
   try {
     // 1. Fetch all active sources from Cloudflare D1
     const { results: sources } = await env.DB.prepare(
-      'SELECT id, name, url, language FROM sources'
+      'SELECT id, name, url, language, selector, scrape_limit, is_active FROM sources WHERE is_active IS NULL OR is_active = 1 OR is_active = true'
     ).all<Source>();
 
     if (!sources || sources.length === 0) {
@@ -169,8 +169,11 @@ export async function scraper(env: Env): Promise<{ scrapedSources: number; inser
         const xmlText = await response.text();
         const parsedArticles = parseRssXml(xmlText);
 
-        if (parsedArticles.length > 0) {
-          const stmts = parsedArticles.map((item) =>
+        const limit = source.scrape_limit && source.scrape_limit > 0 ? source.scrape_limit : 10;
+        const limitedArticles = parsedArticles.slice(0, limit);
+
+        if (limitedArticles.length > 0) {
+          const stmts = limitedArticles.map((item) =>
             env.DB.prepare(`
               INSERT OR IGNORE INTO articles (
                 source_id, 

@@ -117,12 +117,20 @@ export default function App() {
   }, []);
 
   // Add Source via POST /api/sources
-  const handleAddSource = async (name: string, url: string, language: string = 'en') => {
+  const handleAddSource = async (
+    name: string,
+    url: string,
+    language: string = 'en',
+    category: string = 'general',
+    selector?: string,
+    scrape_limit: number = 10,
+    is_active: boolean = true
+  ) => {
     try {
       const res = await fetch('/api/sources', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, url, language }),
+        body: JSON.stringify({ name, url, language, category, selector, scrape_limit, is_active }),
       });
 
       const json = await res.json();
@@ -137,7 +145,64 @@ export default function App() {
     return false;
   };
 
-  // Delete Source via DELETE /api/sources/:id
+  // Update Source via PUT /api/sources/:id
+  const handleUpdateSource = async (id: number, data: Partial<SourceItem>) => {
+    try {
+      const res = await fetch(`/api/sources/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const json = await res.json();
+      if (json.success) {
+        fetchSources();
+        return true;
+      }
+    } catch (e) {
+      console.error('Error updating source:', e);
+    }
+    return false;
+  };
+
+  // Bulk Delete Sources via POST /api/sources/bulk-delete
+  const handleBulkDeleteSources = async (ids: number[]) => {
+    try {
+      const res = await fetch('/api/sources/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        refreshAllData();
+        return true;
+      }
+    } catch (e) {
+      console.error('Error bulk deleting sources:', e);
+    }
+    return false;
+  };
+
+  // Bulk Status Toggle via POST /api/sources/bulk-status
+  const handleBulkToggleStatus = async (ids: number[], is_active: boolean) => {
+    try {
+      const res = await fetch('/api/sources/bulk-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, is_active }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        fetchSources();
+        return true;
+      }
+    } catch (e) {
+      console.error('Error bulk toggling status:', e);
+    }
+    return false;
+  };
+
+  // Delete Single Source via DELETE /api/sources/:id
   const handleDeleteSource = async (id: number) => {
     try {
       const res = await fetch(`/api/sources/${id}`, { method: 'DELETE' });
@@ -307,6 +372,9 @@ export default function App() {
             loading={loadingSources}
             onAddSource={handleAddSource}
             onDeleteSource={handleDeleteSource}
+            onUpdateSource={handleUpdateSource}
+            onBulkDeleteSources={handleBulkDeleteSources}
+            onBulkToggleStatus={handleBulkToggleStatus}
             onScrapeSource={handleScrapeSource}
             onTestFeed={handleTestFeed}
             onRefresh={fetchSources}
