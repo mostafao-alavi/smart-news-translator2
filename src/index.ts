@@ -44,9 +44,20 @@ app.get('/health', (c) => {
   });
 });
 
-// Serve compiled React SPA static assets from ./dist via Cloudflare Worker Assets
-app.use('*', serveStatic({ root: './' }));
-app.get('*', serveStatic({ path: './index.html' }));
+// Serve static assets (js, css, images) from ./dist
+app.use('/assets/*', serveStatic({ root: './' }));
+app.use('/*.js', serveStatic({ root: './' }));
+app.use('/*.css', serveStatic({ root: './' }));
+app.use('/*.svg', serveStatic({ root: './' }));
+app.use('/*.png', serveStatic({ root: './' }));
+app.use('/*.ico', serveStatic({ root: './' }));
+app.use('/*.json', serveStatic({ root: './' }));
+
+// SPA Fallback: Serve index.html for all client-side navigation routes (/settings, /sources, /news, etc.)
+app.get('*', serveStatic({
+  path: './index.html',
+  rewriteRequestPath: () => './index.html',
+}));
 
 // Cloudflare Worker export with fetch and scheduled handlers
 export default {

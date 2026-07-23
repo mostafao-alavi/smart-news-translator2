@@ -55,18 +55,175 @@ interface Translation {
   model_used?: string;
 }
 
+interface ExecutionLogItem {
+  id: number;
+  task_type: string;
+  status: string;
+  items_processed: number;
+  items_success: number;
+  error_message: string | null;
+  duration_ms: number;
+  executed_at: string;
+}
+
+interface SystemEventItem {
+  id: number;
+  event_type: string;
+  description: string;
+  created_at: string;
+}
+
+interface TranslationHistoryItem {
+  id: number;
+  article_id: number;
+  target_language: string;
+  translated_title: string;
+  translated_content: string;
+  translated_at: string;
+  model_used: string;
+}
+
 let sources: Source[] = [];
+let articles: Article[] = [];
+let translations: Translation[] = [];
+let executionLogs: ExecutionLogItem[] = [];
+let systemEvents: SystemEventItem[] = [];
+let translationHistory: TranslationHistoryItem[] = [];
 
 let nextSourceId = 1;
 let nextArticleId = 1;
 let nextTranslationId = 1;
-
-let articles: Article[] = [];
-let translations: Translation[] = [];
+let nextLogId = 1;
+let nextEventId = 1;
+let nextHistoryId = 1;
 
 function seedInitialData() {
-  articles = [];
-  translations = [];
+  if (sources.length === 0) {
+    sources = [
+      { id: 1, name: 'BBC World News', url: 'http://feeds.bbci.co.uk/news/world/rss.xml', language: 'en' },
+      { id: 2, name: 'TechCrunch', url: 'https://techcrunch.com/feed/', language: 'en' },
+      { id: 3, name: 'Hacker News', url: 'https://news.ycombinator.com/rss', language: 'en' },
+    ];
+    nextSourceId = 4;
+  }
+
+  articles = [
+    {
+      id: 1,
+      source_id: 1,
+      original_url: 'https://www.bbc.com/news/articles/c0491823901',
+      title: 'Global Energy Transition Accelerates with Solar and Wind Innovations',
+      content: 'Renewable energy adoption has reached a new record high this quarter according to international energy reports.',
+      published_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+      created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+      translation_status: 'completed',
+    },
+    {
+      id: 2,
+      source_id: 2,
+      original_url: 'https://techcrunch.com/2026/07/23/edge-ai-breakthroughs/',
+      title: 'Next Generation Edge AI Hardware Reduces Latency for Real-Time Processing',
+      content: 'New microprocessors enable neural net inference directly on lightweight edge hardware without cloud roundtrips.',
+      published_at: new Date(Date.now() - 3600000 * 4).toISOString(),
+      created_at: new Date(Date.now() - 3600000 * 4).toISOString(),
+      translation_status: 'completed',
+    },
+    {
+      id: 3,
+      source_id: 3,
+      original_url: 'https://news.ycombinator.com/item?id=4910284',
+      title: 'Cloudflare Workers Releases D1 Native Query Performance Enhancements',
+      content: 'Serverless SQLite databases on the edge now feature improved indexing speed and multi-region read replicas.',
+      published_at: new Date(Date.now() - 3600000 * 6).toISOString(),
+      created_at: new Date(Date.now() - 3600000 * 6).toISOString(),
+      translation_status: 'pending',
+    },
+  ];
+  nextArticleId = 4;
+
+  translations = [
+    {
+      id: 1,
+      article_id: 1,
+      target_language: 'persian',
+      translated_title: 'شتاب‌گیری گذار جهانی انرژی با نوآوری‌های خورشیدی و بادی',
+      translated_content: 'بر اساس گزارش‌های بین‌المللی انرژی، پذیرش انرژی‌های تجدیدپذیر در این سه ماهه به حد نصاب جدیدی رسیده است.',
+      translated_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+      model_used: '@cf/meta/m2m100-1.2b',
+    },
+    {
+      id: 2,
+      article_id: 2,
+      target_language: 'persian',
+      translated_title: 'پیشرفت سخت‌افزارهای هوش مصنوعی لبه نسل جدید برای پردازش آنی',
+      translated_content: 'میکروپردازنده‌های جدید استنتاج شبکه‌های عصبی را مستقیماً روی سخت‌افزارهای سبک لبه و بدون نیاز به سرورهای ابری ممکن می‌سازند.',
+      translated_at: new Date(Date.now() - 3600000 * 4).toISOString(),
+      model_used: 'gemini-2.5-flash',
+    },
+  ];
+  nextTranslationId = 3;
+
+  translationHistory = [
+    {
+      id: 1,
+      article_id: 1,
+      target_language: 'persian',
+      translated_title: 'شتاب‌گیری گذار جهانی انرژی با نوآوری‌های خورشیدی و بادی',
+      translated_content: 'بر اساس گزارش‌های بین‌المللی انرژی، پذیرش انرژی‌های تجدیدپذیر در این سه ماهه به حد نصاب جدیدی رسیده است.',
+      translated_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+      model_used: '@cf/meta/m2m100-1.2b',
+    },
+    {
+      id: 2,
+      article_id: 2,
+      target_language: 'persian',
+      translated_title: 'پیشرفت سخت‌افزارهای هوش مصنوعی لبه نسل جدید برای پردازش آنی',
+      translated_content: 'میکروپردازنده‌های جدید استنتاج شبکه‌های عصبی را مستقیماً روی سخت‌افزارهای سبک لبه و بدون نیاز به سرورهای ابری ممکن می‌سازند.',
+      translated_at: new Date(Date.now() - 3600000 * 4).toISOString(),
+      model_used: 'gemini-2.5-flash',
+    },
+  ];
+  nextHistoryId = 3;
+
+  executionLogs = [
+    {
+      id: 1,
+      task_type: 'cron_scraper',
+      status: 'success',
+      items_processed: 3,
+      items_success: 3,
+      error_message: null,
+      duration_ms: 1240,
+      executed_at: new Date(Date.now() - 3600000 * 6).toISOString(),
+    },
+    {
+      id: 2,
+      task_type: 'cron_translator',
+      status: 'success',
+      items_processed: 2,
+      items_success: 2,
+      error_message: null,
+      duration_ms: 850,
+      executed_at: new Date(Date.now() - 3600000 * 4).toISOString(),
+    },
+  ];
+  nextLogId = 3;
+
+  systemEvents = [
+    {
+      id: 1,
+      event_type: 'SYSTEM_BOOT',
+      description: 'راه‌اندازی موفق موتور ورکر Cloudflare و دیتابیس D1',
+      created_at: new Date(Date.now() - 3600000 * 12).toISOString(),
+    },
+    {
+      id: 2,
+      event_type: 'INITIAL_SEED',
+      description: 'بارگذاری اولیه منابع RSS و مقالات نمونه در D1',
+      created_at: new Date(Date.now() - 3600000 * 12).toISOString(),
+    },
+  ];
+  nextEventId = 3;
 }
 
 seedInitialData();
@@ -255,6 +412,67 @@ const handleFetchArticleDetail = (req: any, res: any) => {
 app.get('/api/news/:id', handleFetchArticleDetail);
 app.get('/api/articles/:id', handleFetchArticleDetail);
 
+// GET /api/news/:id/history & GET /api/articles/:id/history
+app.get('/api/news/:id/history', (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const history = translationHistory.filter((h) => h.article_id === id);
+    res.json({
+      success: true,
+      data: history,
+      error: null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, data: null, error: err.message });
+  }
+});
+app.get('/api/articles/:id/history', (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const history = translationHistory.filter((h) => h.article_id === id);
+    res.json({
+      success: true,
+      data: history,
+      error: null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, data: null, error: err.message });
+  }
+});
+
+// GET /api/logs (Execution logs & System events)
+app.get('/api/logs', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      execution_logs: executionLogs,
+      system_events: systemEvents,
+    },
+    error: null,
+  });
+});
+
+// DELETE /api/logs (Clear execution logs & system events)
+app.delete('/api/logs', (req, res) => {
+  executionLogs = [];
+  systemEvents = [];
+  res.json({
+    success: true,
+    data: { message: 'لاگ‌ها با موفقیت پاکسازی شدند' },
+    error: null,
+  });
+});
+
+// GET /api/health (Server & Worker health check)
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    success: true,
+    message: 'Cloudflare Worker & Express Engine Operational',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // GET /api/sources
 app.get('/api/sources', (req, res) => {
   res.json({
@@ -338,6 +556,7 @@ app.get('/api/stats', (req, res) => {
 
 // POST /api/trigger-scraper (Live simulation of cron scraper)
 app.post('/api/trigger-scraper', async (req, res) => {
+  const startTime = Date.now();
   try {
     let newlyInserted = 0;
     const logs: string[] = [];
@@ -365,7 +584,7 @@ app.post('/api/trigger-scraper', async (req, res) => {
             const link = linkMatch ? (linkMatch[1] || linkMatch[2] || '').trim() : `https://news.example.com/${Date.now()}`;
 
             if (title && !articles.some((a) => a.original_url === link)) {
-              articles.push({
+              articles.unshift({
                 id: nextArticleId++,
                 source_id: source.id,
                 original_url: link,
@@ -384,7 +603,7 @@ app.post('/api/trigger-scraper', async (req, res) => {
         const demoTitle = `Latest update from ${source.name}: Breakthrough Innovations in Cloud Edge AI`;
         const demoLink = `${source.url}#item-${Date.now()}`;
         if (!articles.some((a) => a.title === demoTitle)) {
-          articles.push({
+          articles.unshift({
             id: nextArticleId++,
             source_id: source.id,
             original_url: demoLink,
@@ -398,6 +617,25 @@ app.post('/api/trigger-scraper', async (req, res) => {
         }
       }
     }
+
+    const durationMs = Date.now() - startTime;
+    executionLogs.unshift({
+      id: nextLogId++,
+      task_type: 'manual_scraper',
+      status: 'success',
+      items_processed: sources.length,
+      items_success: newlyInserted,
+      error_message: null,
+      duration_ms: durationMs,
+      executed_at: new Date().toISOString(),
+    });
+
+    systemEvents.unshift({
+      id: nextEventId++,
+      event_type: 'SCRAPER_RUN',
+      description: `پایش منابع خبری انجام شد: ${newlyInserted} خبر جدید به پایگاه داده اضافه شد.`,
+      created_at: new Date().toISOString(),
+    });
 
     res.json({
       success: true,
@@ -755,6 +993,7 @@ app.post('/api/reset-db', (req, res) => {
   }
 });
 app.post('/api/trigger-translator', async (req, res) => {
+  const startTime = Date.now();
   try {
     const pendingArticles = articles.filter((a) => a.translation_status === 'pending').slice(0, 5);
     let successCount = 0;
@@ -766,6 +1005,7 @@ app.post('/api/trigger-translator', async (req, res) => {
 
       const titleRes = await translateTextToPersian(article.title);
       const contentRes = await translateTextToPersian(article.content);
+      const modelUsed = titleRes.modelUsed || contentRes.modelUsed || '@cf/meta/m2m100-1.2b';
 
       translations.push({
         id: nextTranslationId++,
@@ -774,12 +1014,41 @@ app.post('/api/trigger-translator', async (req, res) => {
         translated_title: titleRes.translatedText,
         translated_content: contentRes.translatedText,
         translated_at: new Date().toISOString(),
-        model_used: titleRes.modelUsed || contentRes.modelUsed || '@cf/meta/m2m100-1.2b',
+        model_used: modelUsed,
+      });
+
+      translationHistory.unshift({
+        id: nextHistoryId++,
+        article_id: article.id,
+        target_language: 'persian',
+        translated_title: titleRes.translatedText,
+        translated_content: contentRes.translatedText,
+        translated_at: new Date().toISOString(),
+        model_used: modelUsed,
       });
 
       article.translation_status = 'completed';
       successCount++;
     }
+
+    const durationMs = Date.now() - startTime;
+    executionLogs.unshift({
+      id: nextLogId++,
+      task_type: 'manual_translator',
+      status: 'success',
+      items_processed: pendingArticles.length,
+      items_success: successCount,
+      error_message: null,
+      duration_ms: durationMs,
+      executed_at: new Date().toISOString(),
+    });
+
+    systemEvents.unshift({
+      id: nextEventId++,
+      event_type: 'TRANSLATOR_RUN',
+      description: `ترجمه زبانی انجام شد: ${successCount} خبر به زبان فارسی ترجمه گردید.`,
+      created_at: new Date().toISOString(),
+    });
 
     res.json({
       success: true,
@@ -974,7 +1243,7 @@ async function start() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*all', (req, res) => {
+    app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

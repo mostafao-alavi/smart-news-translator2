@@ -133,10 +133,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     try {
       const res = await fetch('/api/logs');
       if (res.ok) {
-        const json = await res.json();
-        if (json.success && json.data) {
-          setExecutionLogs(json.data.execution_logs || []);
-          setSystemEvents(json.data.system_events || []);
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            setExecutionLogs(json.data.execution_logs || []);
+            setSystemEvents(json.data.system_events || []);
+          }
         }
       }
     } catch (e) {

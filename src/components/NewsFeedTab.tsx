@@ -73,9 +73,12 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
     try {
       const res = await fetch(`/api/news/${article.id}/history`);
       if (res.ok) {
-        const json = await res.json();
-        if (json.success) {
-          setHistoryLogs(json.data || []);
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const json = await res.json();
+          if (json.success) {
+            setHistoryLogs(json.data || []);
+          }
         }
       }
     } catch (e) {
