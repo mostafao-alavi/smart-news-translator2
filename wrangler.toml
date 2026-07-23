@@ -1,4 +1,4 @@
-name = "news-worker"
+name = 'smart-news-translator2'
 main = "src/index.ts"
 # بهروزرسانی به تاریخ جدیدتر برای بهرهمندی از آخرین بهینهسازیهای موتور V8 کلودفلر
 compatibility_date = "2024-07-23"
