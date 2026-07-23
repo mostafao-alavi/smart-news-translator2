@@ -3,22 +3,20 @@ import { Navbar } from './components/Navbar';
 import { StatsOverview } from './components/StatsOverview';
 import { NewsFeedTab } from './components/NewsFeedTab';
 import { SourcesTab } from './components/SourcesTab';
-import { CronTriggersTab } from './components/CronTriggersTab';
-import { CodeViewerTab } from './components/CodeViewerTab';
+import { SettingsTab } from './components/SettingsTab';
 import { JoinedArticleNews, SourceItem, StatsData, WorkerFileInfo } from './types/client';
 
 export default function App() {
-  const getTabFromPath = (): 'news' | 'sources' | 'cron' | 'code' => {
+  const getTabFromPath = (): 'news' | 'sources' | 'settings' => {
     const path = window.location.pathname.toLowerCase();
     if (path.includes('sources')) return 'sources';
-    if (path.includes('cron')) return 'cron';
-    if (path.includes('code')) return 'code';
+    if (path.includes('settings') || path.includes('cron') || path.includes('code')) return 'settings';
     return 'news';
   };
 
-  const [activeTab, setActiveTabState] = useState<'news' | 'sources' | 'cron' | 'code'>(getTabFromPath);
+  const [activeTab, setActiveTabState] = useState<'news' | 'sources' | 'settings'>(getTabFromPath);
 
-  const setActiveTab = (tab: 'news' | 'sources' | 'cron' | 'code') => {
+  const setActiveTab = (tab: 'news' | 'sources' | 'settings') => {
     setActiveTabState(tab);
     const targetPath = tab === 'news' ? '/news' : `/${tab}`;
     if (window.location.pathname !== targetPath) {
@@ -45,7 +43,7 @@ export default function App() {
   const [isTriggeringScraper, setIsTriggeringScraper] = useState<boolean>(false);
   const [isTriggeringTranslator, setIsTriggeringTranslator] = useState<boolean>(false);
 
-  const [workerFiles, setWorkerFiles] = useState<WorkerFileInfo[]>([
+  const [workerFiles] = useState<WorkerFileInfo[]>([
     { filename: 'wrangler.toml', language: 'toml', path: '/wrangler.toml' },
     { filename: 'src/types.ts', language: 'typescript', path: '/src/types.ts' },
     { filename: 'src/api/routes.ts', language: 'typescript', path: '/src/api/routes.ts' },
@@ -165,10 +163,14 @@ export default function App() {
     }
   };
 
-  // Translate single article via POST /api/news/:id/translate
-  const handleTranslateArticle = async (id: number) => {
+  // Translate or Re-translate single article via POST /api/news/:id/translate
+  const handleTranslateArticle = async (id: number, model?: string) => {
     try {
-      const res = await fetch(`/api/news/${id}/translate`, { method: 'POST' });
+      const res = await fetch(`/api/news/${id}/translate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model }),
+      });
       const json = await res.json();
       if (json.success) {
         refreshAllData();
@@ -181,12 +183,12 @@ export default function App() {
   };
 
   // Create custom article via POST /api/news/custom
-  const handleCreateCustomArticle = async (title: string, content: string) => {
+  const handleCreateCustomArticle = async (title: string, content: string, model?: string) => {
     try {
       const res = await fetch('/api/news/custom', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, content }),
+        body: JSON.stringify({ title, content, model }),
       });
       const json = await res.json();
       if (res.ok && json.success) {
@@ -311,22 +313,21 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'cron' && (
-          <CronTriggersTab
+        {activeTab === 'settings' && (
+          <SettingsTab
             onTriggerScraper={handleTriggerScraper}
             onTriggerTranslator={handleTriggerTranslator}
             isTriggeringScraper={isTriggeringScraper}
             isTriggeringTranslator={isTriggeringTranslator}
+            workerFiles={workerFiles}
           />
         )}
-
-        {activeTab === 'code' && <CodeViewerTab files={workerFiles} />}
       </main>
 
       {/* Footer */}
       <footer className="border-t border-gray-200 bg-white py-6 mt-12 text-center text-xs text-gray-500">
         <p>
-          توسعه‌یافته بر پایه معمار ارشد Cloudflare Worker • فریمورک Hono • دیتابیس Cloudflare D1 • مدل‌های هوش مصنوعی Workers AI (@cf/meta/m2m100-1.2b & @cf/ai4bharat/indictrans2-en-indic-1B)
+          توسعه‌یافته بر پایه معمار ارشد Cloudflare Worker • فریمورک Hono • دیتابیس Cloudflare D1 • Llama 3.1 8B • Gemini 2.5 • M2M100 AI
         </p>
       </footer>
     </div>

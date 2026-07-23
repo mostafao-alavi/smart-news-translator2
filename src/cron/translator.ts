@@ -78,33 +78,89 @@ function selectTranslationModel(targetLang: string) {
 }
 
 /**
- * Router & Translation caller with fallback mechanism
+ * Router & Translation caller with flexible AI Model selection
  */
-async function translateTextWithAI(
+export async function translateTextWithAI(
   env: Env, 
   text: string, 
   sourceLang: string = 'english', 
-  targetLang: string = 'persian'
+  targetLang: string = 'persian',
+  preferredModel?: string
 ): Promise<TranslationResult> {
   if (!text || text.trim().length === 0) {
     return { translatedText: '', modelUsed: 'none' };
   }
 
-  const truncatedText = text.slice(0, 1000);
-  const route = selectTranslationModel(targetLang);
+  const truncatedText = text.slice(0, 1200);
+  const modelToUse = preferredModel || '@cf/meta/m2m100-1.2b';
 
-  // 1. Primary Attempt: Workers AI Binding if available
+  // 1. If Gemini is explicitly chosen or used as fallback
+  if (modelToUse === 'gemini-2.5-flash' || (!env.AI && env.GEMINI_API_KEY)) {
+    if (env.GEMINI_API_KEY) {
+      try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{
+                text: `You are a professional translator from ${sourceLang} to ${targetLang}. Translate the following text cleanly and accurately into fluent ${targetLang}. Output ONLY the translated text without explanations or quotes:\n\n${truncatedText}`
+              }]
+            }]
+          })
+        });
+
+        if (response.ok) {
+          const json: any = await response.json();
+          const translated = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (translated) {
+            return { translatedText: translated, modelUsed: 'gemini-2.5-flash' };
+          }
+        }
+      } catch (e) {
+        console.warn('Gemini API translation failed:', e);
+      }
+    }
+  }
+
+  // 2. Workers AI execution if available
   if (env.AI) {
     try {
+      // Check if chosen model is an LLM Instruct/Chat model (e.g. Llama 3.1, Mistral, Qwen)
+      if (
+        modelToUse.includes('llama') || 
+        modelToUse.includes('mistral') || 
+        modelToUse.includes('qwen')
+      ) {
+        const prompt = `[INST] You are an expert translator. Translate the following English news text into fluent, natural Persian (Farsi). Output ONLY the translated Persian text without any English commentary, preamble, or quotation marks.\n\nText to translate:\n${truncatedText} [/INST]`;
+        
+        const response: any = await env.AI.run(modelToUse, {
+          messages: [
+            { role: 'system', content: 'You are a professional English to Persian (Farsi) news translator.' },
+            { role: 'user', content: `Translate this news text into fluent Persian (Farsi):\n${truncatedText}` }
+          ],
+          max_tokens: 800,
+        });
+
+        const translated = response?.response?.trim() || response?.translated_text?.trim();
+        if (translated) {
+          return { translatedText: translated, modelUsed: modelToUse };
+        }
+      }
+
+      // Default translation model (e.g. @cf/meta/m2m100-1.2b or @cf/ai4bharat/indictrans2-en-indic-1B)
+      const route = selectTranslationModel(targetLang);
+      const targetModel = modelToUse.startsWith('@cf/') ? modelToUse : route.model;
+
       let response: any;
       if (route.isIndic) {
-        response = await env.AI.run(route.model, {
+        response = await env.AI.run(targetModel, {
           text: truncatedText,
           src_lang: route.sourceCode,
           tgt_lang: route.targetCode,
         });
       } else {
-        response = await env.AI.run(route.model, {
+        response = await env.AI.run(targetModel, {
           text: truncatedText,
           source_lang: route.sourceCode,
           target_lang: route.targetCode,
@@ -112,18 +168,18 @@ async function translateTextWithAI(
       }
 
       if (response?.translated_text) {
-        return { translatedText: response.translated_text, modelUsed: route.model };
+        return { translatedText: response.translated_text, modelUsed: targetModel };
       }
       if (typeof response === 'string') {
-        return { translatedText: response, modelUsed: route.model };
+        return { translatedText: response, modelUsed: targetModel };
       }
     } catch (err) {
-      console.warn(`Workers AI (${route.model}) execution failed, switching to Gemini fallback:`, err);
+      console.warn(`Workers AI (${modelToUse}) execution failed, switching to fallback:`, err);
     }
   }
 
-  // 2. Secondary Fallback Attempt: Gemini API (gemini-2.5-flash)
-  if (env.GEMINI_API_KEY) {
+  // 3. Secondary Fallback Attempt: Gemini API if not already tried
+  if (env.GEMINI_API_KEY && modelToUse !== 'gemini-2.5-flash') {
     try {
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
         method: 'POST',
@@ -131,7 +187,7 @@ async function translateTextWithAI(
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: `You are a professional translator from ${sourceLang} to ${targetLang}. Translate the following text cleanly and accurately into fluent ${targetLang}. Output ONLY the translated text without explanations or quotes:\n\n${truncatedText}`
+              text: `Translate the following text accurately into fluent Persian (Farsi):\n\n${truncatedText}`
             }]
           }]
         })
@@ -144,15 +200,13 @@ async function translateTextWithAI(
           return { translatedText: translated, modelUsed: 'gemini-2.5-flash' };
         }
       }
-    } catch (e) {
-      console.warn('Gemini API fallback failed:', e);
-    }
+    } catch (e) {}
   }
 
-  // 3. Graceful Fallback
+  // 4. Graceful Fallback
   return {
     translatedText: truncatedText,
-    modelUsed: 'fallback-emulator'
+    modelUsed: `${modelToUse} (fallback)`
   };
 }
 
@@ -161,6 +215,7 @@ async function translateTextWithAI(
  * Fetches pending articles and translates title & content.
  */
 export async function translator(env: Env): Promise<{ processed: number; successCount: number; errors: string[] }> {
+  const startTime = Date.now();
   const errors: string[] = [];
   let processed = 0;
   let successCount = 0;
@@ -198,6 +253,8 @@ export async function translator(env: Env): Promise<{ processed: number; success
         ]);
 
         const modelUsed = titleResult.modelUsed || contentResult.modelUsed || '@cf/meta/m2m100-1.2b';
+        const finalTitle = titleResult.translatedText || article.title;
+        const finalContent = contentResult.translatedText || article.content;
 
         await env.DB.prepare(`
           INSERT INTO translations (
@@ -211,11 +268,19 @@ export async function translator(env: Env): Promise<{ processed: number; success
           ) VALUES (?, 'persian', ?, ?, datetime('now'), ?, ?)
         `).bind(
           article.id,
-          titleResult.translatedText || article.title,
-          contentResult.translatedText || article.content,
+          finalTitle,
+          finalContent,
           modelUsed,
           modelUsed
         ).run();
+
+        // Also record into translation_history
+        try {
+          await env.DB.prepare(`
+            INSERT INTO translation_history (article_id, target_language, translated_title, translated_content, translated_at, model_used)
+            VALUES (?, 'persian', ?, ?, datetime('now'), ?)
+          `).bind(article.id, finalTitle, finalContent, modelUsed).run();
+        } catch {}
 
         await env.DB.prepare(
           "UPDATE articles SET translation_status = 'completed' WHERE id = ?"
@@ -237,6 +302,25 @@ export async function translator(env: Env): Promise<{ processed: number; success
     }
   } catch (globalErr: any) {
     errors.push(`Global translator error: ${globalErr.message}`);
+  }
+
+  const durationMs = Date.now() - startTime;
+
+  // Record execution log in D1
+  try {
+    await env.DB.prepare(`
+      INSERT INTO execution_logs (task_type, status, items_processed, items_success, error_message, duration_ms, executed_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+    `).bind(
+      'cron_translator',
+      errors.length > 0 ? (successCount > 0 ? 'partial' : 'failed') : 'success',
+      processed,
+      successCount,
+      errors.join('; ') || null,
+      durationMs
+    ).run();
+  } catch {
+    // Gracefully handle if logging table is not ready yet
   }
 
   return {

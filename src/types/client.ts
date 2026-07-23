@@ -39,6 +39,34 @@ export interface DbStatusInfo {
   last_sync: string;
 }
 
+export interface ExecutionLogItem {
+  id: number;
+  task_type: 'cron_scraper' | 'cron_translator' | 'manual_scraper' | 'manual_translator' | string;
+  status: 'success' | 'failed' | 'partial' | string;
+  items_processed: number;
+  items_success: number;
+  error_message: string | null;
+  duration_ms: number;
+  executed_at: string;
+}
+
+export interface SystemEventItem {
+  id: number;
+  event_type: string;
+  description: string;
+  created_at: string;
+}
+
+export interface TranslationHistoryItem {
+  id: number;
+  article_id: number;
+  target_language: string;
+  translated_title: string;
+  translated_content: string;
+  translated_at: string;
+  model_used: string;
+}
+
 export interface WorkerFileInfo {
   filename: string;
   language: string;

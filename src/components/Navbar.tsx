@@ -1,9 +1,9 @@
 import React from 'react';
-import { Rss, Languages, Database, Code2, Play, RefreshCw, Cpu } from 'lucide-react';
+import { Rss, Languages, Database, Settings, RefreshCw, Cpu } from 'lucide-react';
 
 interface NavbarProps {
-  activeTab: 'news' | 'sources' | 'cron' | 'code';
-  setActiveTab: (tab: 'news' | 'sources' | 'cron' | 'code') => void;
+  activeTab: 'news' | 'sources' | 'settings';
+  setActiveTab: (tab: 'news' | 'sources' | 'settings') => void;
   onRefreshAll: () => void;
   isRefreshing: boolean;
 }
@@ -33,7 +33,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </span>
               </div>
               <p className="text-xs text-gray-500 hidden sm:block">
-                Hono Framework • Cloudflare D1 • Workers AI (@cf/meta/m2m100-1.2b & @cf/ai4bharat/indictrans2-en-indic-1B)
+                Hono Framework • Cloudflare D1 • Llama 3.1 8B • Gemini 2.5 • M2M100 AI
               </p>
             </div>
           </div>
@@ -44,19 +44,19 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={() => setActiveTab('news')}
               className={`flex items-center space-x-1.5 space-x-reverse px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                 activeTab === 'news'
-                  ? 'bg-orange-50 text-orange-700 border border-orange-200 font-semibold'
+                  ? 'bg-orange-50 text-orange-700 border border-orange-200 font-semibold shadow-2xs'
                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
               }`}
             >
               <Languages className="w-4 h-4" />
-              <span>اخبار ترجمه‌شده</span>
+              <span>اخبار و ترجمه‌ها</span>
             </button>
 
             <button
               onClick={() => setActiveTab('sources')}
               className={`flex items-center space-x-1.5 space-x-reverse px-3 py-2 rounded-lg text-sm font-medium transition-all ${
                 activeTab === 'sources'
-                  ? 'bg-orange-50 text-orange-700 border border-orange-200 font-semibold'
+                  ? 'bg-orange-50 text-orange-700 border border-orange-200 font-semibold shadow-2xs'
                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
               }`}
             >
@@ -65,27 +65,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <button
-              onClick={() => setActiveTab('cron')}
+              onClick={() => setActiveTab('settings')}
               className={`flex items-center space-x-1.5 space-x-reverse px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                activeTab === 'cron'
-                  ? 'bg-orange-50 text-orange-700 border border-orange-200 font-semibold'
+                activeTab === 'settings'
+                  ? 'bg-orange-50 text-orange-700 border border-orange-200 font-semibold shadow-2xs'
                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
               }`}
             >
-              <Play className="w-4 h-4 text-emerald-600" />
-              <span>تست کرون و اجرا</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('code')}
-              className={`flex items-center space-x-1.5 space-x-reverse px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                activeTab === 'code'
-                  ? 'bg-orange-50 text-orange-700 border border-orange-200 font-semibold'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-              }`}
-            >
-              <Code2 className="w-4 h-4 text-sky-600" />
-              <span>سورس کدهای ورکر</span>
+              <Settings className="w-4 h-4 text-orange-600" />
+              <span>تنظیمات و ابزار AI</span>
             </button>
 
             {/* Live D1 Database Connection Badge */}

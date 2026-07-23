@@ -76,6 +76,7 @@ function cleanText(input: string): string {
  * Fetches RSS feeds for all sources in D1 and saves articles with 'pending' status.
  */
 export async function scraper(env: Env): Promise<{ scrapedSources: number; insertedArticles: number; errors: string[] }> {
+  const startTime = Date.now();
   const errors: string[] = [];
   let insertedCount = 0;
   let sourcesCount = 0;
@@ -145,6 +146,25 @@ export async function scraper(env: Env): Promise<{ scrapedSources: number; inser
     }
   } catch (globalErr: any) {
     errors.push(`Global scraper error: ${globalErr.message}`);
+  }
+
+  const durationMs = Date.now() - startTime;
+  
+  // Record execution log in D1
+  try {
+    await env.DB.prepare(`
+      INSERT INTO execution_logs (task_type, status, items_processed, items_success, error_message, duration_ms, executed_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+    `).bind(
+      'cron_scraper',
+      errors.length > 0 ? (insertedCount > 0 ? 'partial' : 'failed') : 'success',
+      sourcesCount,
+      insertedCount,
+      errors.join('; ') || null,
+      durationMs
+    ).run();
+  } catch {
+    // Gracefully handle if logging table is not ready yet
   }
 
   return {

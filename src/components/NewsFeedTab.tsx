@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { JoinedArticleNews } from '../types/client';
+import { JoinedArticleNews, TranslationHistoryItem } from '../types/client';
 import {
   Search,
   ExternalLink,
@@ -13,12 +13,16 @@ import {
   RefreshCw,
   Trash2,
   Plus,
-  Send,
   ChevronDown,
   ChevronUp,
   FileText,
   Loader2,
+  Bot,
+  Zap,
+  X,
+  History
 } from 'lucide-react';
+import { AI_MODELS } from './SettingsTab';
 
 interface NewsFeedTabProps {
   news: JoinedArticleNews[];
@@ -26,9 +30,9 @@ interface NewsFeedTabProps {
   onRefresh: () => void;
   onTriggerScraper: () => void;
   onTriggerTranslator: () => void;
-  onTranslateArticle: (id: number) => void;
+  onTranslateArticle: (id: number, model?: string) => Promise<any>;
   onDeleteArticle: (id: number) => void;
-  onCreateCustomArticle: (title: string, content: string) => Promise<boolean>;
+  onCreateCustomArticle: (title: string, content: string, model?: string) => Promise<boolean>;
   isTriggeringScraper: boolean;
   isTriggeringTranslator: boolean;
 }
@@ -49,15 +53,41 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [translatingId, setTranslatingId] = useState<number | null>(null);
 
+  // Model Picker Modal State
+  const [selectedArticleForTranslate, setSelectedArticleForTranslate] = useState<JoinedArticleNews | null>(null);
+  const [chosenModel, setChosenModel] = useState<string>('@cf/meta/m2m100-1.2b');
+
   // Lazy loading article detail state
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [detailsMap, setDetailsMap] = useState<Record<number, { content?: string; translated_content?: string }>>({});
   const [loadingDetailId, setLoadingDetailId] = useState<number | null>(null);
 
-  // Custom article form state
+  // Translation History Modal state
+  const [historyArticle, setHistoryArticle] = useState<JoinedArticleNews | null>(null);
+  const [historyLogs, setHistoryLogs] = useState<TranslationHistoryItem[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState<boolean>(false);
+
+  const openHistoryModal = async (article: JoinedArticleNews) => {
+    setHistoryArticle(article);
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`/api/news/${article.id}/history`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) {
+          setHistoryLogs(json.data || []);
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching history:', e);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
   const [showCustomForm, setShowCustomForm] = useState(false);
   const [customTitle, setCustomTitle] = useState('');
   const [customContent, setCustomContent] = useState('');
+  const [customModel, setCustomModel] = useState<string>('@cf/meta/m2m100-1.2b');
   const [isSubmittingCustom, setIsSubmittingCustom] = useState(false);
 
   const toggleExpandArticle = async (id: number) => {
@@ -100,9 +130,10 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const handleSingleTranslate = async (id: number) => {
+  const executeSingleTranslate = async (id: number, modelToUse: string) => {
     setTranslatingId(id);
-    await onTranslateArticle(id);
+    setSelectedArticleForTranslate(null);
+    await onTranslateArticle(id, modelToUse);
     setTranslatingId(null);
   };
 
@@ -110,7 +141,7 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
     e.preventDefault();
     if (!customTitle.trim()) return;
     setIsSubmittingCustom(true);
-    const success = await onCreateCustomArticle(customTitle, customContent);
+    const success = await onCreateCustomArticle(customTitle, customContent, customModel);
     setIsSubmittingCustom(false);
     if (success) {
       setCustomTitle('');
@@ -206,7 +237,7 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
 
             <div>
               <label className="block text-xs font-semibold text-gray-700 mb-1">
-                توضیحات یا متن خبر (توضیحات اختیاری):
+                توضیحات یا متن خبر (متن انگلیسی اختیاری):
               </label>
               <textarea
                 rows={2}
@@ -217,115 +248,129 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
               />
             </div>
 
+            {/* AI Model Selector for Custom Article */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-700 mb-1.5 flex items-center gap-1">
+                <Bot className="w-3.5 h-3.5 text-purple-600" />
+                <span>انتخاب موتور هوش مصنوعی برای ترجمه این خبر:</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {AI_MODELS.map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setCustomModel(m.id)}
+                    className={`p-2.5 rounded-lg border text-right transition-all flex flex-col justify-between ${
+                      customModel === m.id
+                        ? 'bg-emerald-100/70 border-emerald-500 ring-2 ring-emerald-500/20'
+                        : 'bg-white border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-xs font-bold text-gray-900">{m.name}</span>
+                      <span className={`text-[9px] px-1.5 py-0.2 rounded ${m.color}`}>{m.badge}</span>
+                    </div>
+                    <span className="text-[10px] text-gray-500 mt-1">{m.desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <button
               type="submit"
               disabled={isSubmittingCustom}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-4 py-2.5 rounded-lg transition-colors flex items-center justify-center space-x-1.5 space-x-reverse disabled:opacity-50"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-5 py-2.5 rounded-lg transition-colors flex items-center space-x-1.5 space-x-reverse disabled:opacity-50"
             >
-              <Send className="w-3.5 h-3.5" />
-              <span>{isSubmittingCustom ? 'در حال ثبت و ترجمه...' : 'ذخیره در دیتابیس D1 و ترجمه هوشمند خودکار'}</span>
+              {isSubmittingCustom ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>در حال ترجمه و ذخیره‌سازی...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>ترجمه فوری و ذخیره در D1</span>
+                </>
+              )}
             </button>
           </form>
         </div>
       )}
 
-      {/* News List */}
+      {/* Main Articles List */}
       {loading ? (
-        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-500 space-y-3 shadow-xs">
-          <RefreshCw className="w-8 h-8 mx-auto animate-spin text-orange-500" />
-          <p className="text-sm">در حال دریافت جدیدترین اخبار از ورکر Cloudflare D1...</p>
+        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-500 space-y-3">
+          <RefreshCw className="w-8 h-8 animate-spin mx-auto text-orange-500" />
+          <p className="text-sm">در حال دریافت آخرین اخبار و ترجمه‌ها از دیتابیس Cloudflare D1...</p>
         </div>
       ) : filteredNews.length === 0 ? (
-        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-500 space-y-4 shadow-xs">
-          <Globe className="w-12 h-12 mx-auto text-gray-300" />
-          <div>
-            <h3 className="text-base font-semibold text-gray-800">هیچ خبری یافت نشد</h3>
-            <p className="text-xs text-gray-500 mt-1">
-              {searchTerm ? 'عبارت جستجو شده را تغییر دهید.' : 'برای دریافت اخبار از منابع RSS، دکمه دریافت اخبار را بفشارید.'}
-            </p>
-          </div>
-          <button
-            onClick={onTriggerScraper}
-            className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors inline-flex items-center space-x-1.5 space-x-reverse"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>شروع اسکرپ اخبار از منابع RSS</span>
-          </button>
+        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center text-gray-500 space-y-3">
+          <Globe className="w-10 h-10 text-gray-300 mx-auto" />
+          <p className="text-base font-bold text-gray-700">هیچ خبری یافت نشد!</p>
+          <p className="text-xs text-gray-500">
+            می‌توانید روی دکمه «دریافت اخبار جدید (Scraper)» کلیک کنید یا یک خبر دستی اضافه کنید.
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
           {filteredNews.map((item) => {
-            const isCompleted = item.translation_status === 'completed' && item.translated_title;
-            const isPending = item.translation_status === 'pending';
-            const isProcessing = item.translation_status === 'processing';
             const isSingleTranslating = translatingId === item.id;
-
             const isExpanded = expandedIds.has(item.id);
             const isLoadingThisDetail = loadingDetailId === item.id;
-            const detail = detailsMap[item.id];
-            const translatedText = detail?.translated_content ?? item.translated_content;
-            const originalContentText = detail?.content ?? item.content;
+
+            const originalText = detailsMap[item.id]?.content || item.content;
+            const translatedText = detailsMap[item.id]?.translated_content || item.translated_content;
 
             return (
               <div
                 key={item.id}
-                className="bg-white border border-gray-200 rounded-xl p-5 hover:border-gray-300 transition-all shadow-xs space-y-4"
+                className="bg-white border border-gray-200/90 hover:border-gray-300 rounded-xl p-5 shadow-2xs space-y-4 transition-all"
               >
-                {/* Meta Header */}
+                {/* Source & Status Header */}
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
                   <div className="flex items-center space-x-2 space-x-reverse">
-                    <span className="bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-md font-medium border border-gray-200 flex items-center gap-1.5">
-                      <Globe className="w-3 h-3 text-sky-600" />
+                    <span className="bg-gray-100 text-gray-800 font-bold text-xs px-2.5 py-1 rounded-lg border border-gray-200 flex items-center gap-1">
+                      <Globe className="w-3 h-3 text-gray-500" />
                       {item.source_name}
                     </span>
 
-                    <span className="text-gray-400 text-xs flex items-center gap-1">
+                    <span className="text-[11px] text-gray-400 flex items-center gap-1">
                       <Clock className="w-3 h-3" />
-                      {new Date(item.published_at || item.created_at).toLocaleTimeString('fa-IR', {
+                      {new Date(item.created_at).toLocaleTimeString('fa-IR', {
                         hour: '2-digit',
                         minute: '2-digit',
                       })}
                     </span>
                   </div>
 
-                  {/* Status Badge & Individual Article Controls */}
                   <div className="flex items-center space-x-2 space-x-reverse">
-                    {isCompleted && (
-                      <>
-                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-xs px-2.5 py-0.5 rounded-full flex items-center gap-1 font-medium">
-                          <CheckCircle2 className="w-3 h-3" />
-                          ترجمه تکمیل شده
-                        </span>
-                        <span className="bg-purple-50 text-purple-700 border border-purple-200/80 text-xs px-2 py-0.5 rounded-md font-mono flex items-center gap-1">
-                          <Sparkles className="w-3 h-3 text-purple-500" />
-                          {item.model_used || '@cf/meta/m2m100-1.2b'}
-                        </span>
-                      </>
-                    )}
-
-                    {isPending && (
-                      <span className="bg-orange-50 text-orange-700 border border-orange-200/80 text-xs px-2.5 py-0.5 rounded-full flex items-center gap-1 font-medium">
+                    {/* Translation Status Badge */}
+                    {item.translation_status === 'completed' ? (
+                      <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        ترجمه‌شده
+                      </span>
+                    ) : item.translation_status === 'processing' || isSingleTranslating ? (
+                      <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[11px] px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1">
+                        <RefreshCw className="w-3 h-3 animate-spin text-amber-600" />
+                        در حال ترجمه...
+                      </span>
+                    ) : (
+                      <span className="bg-gray-100 text-gray-600 border border-gray-200 text-[11px] px-2.5 py-0.5 rounded-full font-medium flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        در صف ترجمه AI
+                        در انتظار ترجمه
                       </span>
                     )}
 
-                    {(isProcessing || isSingleTranslating) && (
-                      <span className="bg-sky-50 text-sky-700 border border-sky-200/80 text-xs px-2.5 py-0.5 rounded-full flex items-center gap-1 font-medium animate-pulse">
-                        <Sparkles className="w-3 h-3" />
-                        در حال ترجمه هوشمند...
-                      </span>
-                    )}
-
-                    {/* Single Article Translate Button */}
+                    {/* Single Article AI Model Selector & Translate Button */}
                     <button
-                      onClick={() => handleSingleTranslate(item.id)}
+                      onClick={() => setSelectedArticleForTranslate(item)}
                       disabled={isSingleTranslating}
-                      title="ترجمه اختصاصی این خبر با AI"
-                      className="bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-xs px-2.5 py-1 rounded-lg font-medium transition-colors flex items-center gap-1 shrink-0"
+                      title="ترجمه یا بازترجمه با هوش مصنوعی دلخواه"
+                      className="bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-xs px-2.5 py-1 rounded-lg font-medium transition-colors flex items-center gap-1 shrink-0 disabled:opacity-50"
                     >
                       <Sparkles className={`w-3 h-3 text-orange-600 ${isSingleTranslating ? 'animate-spin' : ''}`} />
-                      <span>{isSingleTranslating ? 'در حال ترجمه...' : 'ترجمه تکی AI'}</span>
+                      <span>{item.translated_title ? 'بازترجمه با AI' : 'ترجمه تکی AI'}</span>
                     </button>
 
                     {/* Delete Article Button */}
@@ -347,31 +392,42 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
                       <div className="flex items-center justify-between">
                         <span className="text-orange-700 text-xs font-semibold flex items-center gap-1">
                           <Sparkles className="w-3.5 h-3.5" />
-                          نسخه فارسی (ترجمه‌شده با Workers AI)
+                          <span>نسخه فارسی (ترجمه هوشمند AI)</span>
                         </span>
 
-                        <button
-                          onClick={() => {
-                            const trContent = detailsMap[item.id]?.translated_content || item.translated_content || '';
-                            handleCopy(
-                              item.id,
-                              `${item.translated_title}\n\n${trContent}`
-                            );
-                          }}
-                          className="text-gray-600 hover:text-orange-700 text-xs flex items-center gap-1 px-2 py-1 rounded bg-white border border-gray-200 shadow-2xs"
-                        >
-                          {copiedId === item.id ? (
-                            <>
-                              <Check className="w-3 h-3 text-emerald-600" />
-                              <span className="text-emerald-600">کپی شد</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3 h-3" />
-                              <span>کپی ترجمه</span>
-                            </>
-                          )}
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => openHistoryModal(item)}
+                            title="مشاهده آرشیو و مدل‌های قبلی ترجمه این خبر"
+                            className="text-indigo-700 hover:text-indigo-900 text-xs flex items-center gap-1 px-2.5 py-1 rounded bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors shadow-2xs"
+                          >
+                            <History className="w-3.5 h-3.5 text-indigo-600" />
+                            <span>آرشیو ترجمه‌ها</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              const trContent = detailsMap[item.id]?.translated_content || item.translated_content || '';
+                              handleCopy(
+                                item.id,
+                                `${item.translated_title}\n\n${trContent}`
+                              );
+                            }}
+                            className="text-gray-600 hover:text-orange-700 text-xs flex items-center gap-1 px-2 py-1 rounded bg-white border border-gray-200 shadow-2xs"
+                          >
+                            {copiedId === item.id ? (
+                              <>
+                                <Check className="w-3 h-3 text-emerald-600" />
+                                <span className="text-emerald-600">کپی شد</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3 h-3" />
+                                <span>کپی ترجمه</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
 
                       <h3 className="text-base sm:text-lg font-bold text-gray-900 leading-snug">
@@ -403,12 +459,12 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
                         هنوز برای این خبر ترجمه فارسی تولید نشده است.
                       </span>
                       <button
-                        onClick={() => handleSingleTranslate(item.id)}
+                        onClick={() => setSelectedArticleForTranslate(item)}
                         disabled={isSingleTranslating}
                         className="text-orange-600 hover:underline text-xs font-medium flex items-center gap-1"
                       >
                         <Sparkles className="w-3 h-3" />
-                        <span>ترجمه فوری این خبر</span>
+                        <span>ترجمه فوری با مدل AI دلخواه</span>
                       </button>
                     </div>
                   )}
@@ -418,66 +474,211 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
                     <div className="text-xs font-semibold text-gray-400 mb-1">
                       عنوان و لینک اصلی (انگلیسی):
                     </div>
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-xs sm:text-sm font-medium text-gray-600 ltr text-left">
-                        {item.title}
-                      </p>
+                    <div className="flex items-start justify-between gap-2">
                       <a
                         href={item.original_url}
                         target="_blank"
-                        rel="noreferrer"
-                        className="text-sky-700 hover:text-sky-800 text-xs flex items-center gap-1 shrink-0 bg-sky-50 hover:bg-sky-100 px-2.5 py-1.5 rounded-lg border border-sky-200/80"
+                        rel="noopener noreferrer"
+                        className="text-xs sm:text-sm text-sky-700 hover:text-sky-900 hover:underline font-medium ltr text-left leading-snug flex items-center gap-1 group"
                       >
-                        <ExternalLink className="w-3 h-3" />
-                        <span>مشاهده منبع</span>
+                        <span>{item.title}</span>
+                        <ExternalLink className="w-3 h-3 shrink-0 opacity-70 group-hover:opacity-100" />
                       </a>
                     </div>
 
                     {/* Lazy Loaded Original Content */}
                     {isExpanded && (
-                      <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-1">
-                        <div className="text-[11px] font-semibold text-gray-500 flex items-center gap-1">
-                          <FileText className="w-3 h-3" />
-                          <span>متن کامل انگلیسی (Original Content):</span>
+                      <div className="pt-2 mt-2 border-t border-gray-100">
+                        <div className="text-xs font-semibold text-gray-400 mb-1">
+                          متن اصلی (English Content):
                         </div>
                         {isLoadingThisDetail ? (
                           <div className="flex items-center gap-2 text-xs text-gray-500 py-1">
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            <span>بارگذاری محتوا...</span>
+                            <span>در حال دریافت...</span>
                           </div>
-                        ) : originalContentText ? (
-                          <p className="text-xs text-gray-700 ltr text-left leading-relaxed whitespace-pre-line">
-                            {originalContentText}
+                        ) : originalText ? (
+                          <p className="text-xs text-gray-600 ltr text-left leading-relaxed whitespace-pre-line bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+                            {originalText}
                           </p>
                         ) : (
-                          <p className="text-xs text-gray-400 italic ltr text-left">متن بدنه انگلیسی ثبت نشده است.</p>
+                          <p className="text-xs text-gray-400 italic">متن اصلی موجود نیست.</p>
                         )}
                       </div>
                     )}
                   </div>
+                </div>
 
-                  {/* Lazy Loading Expand/Collapse Toggle Button */}
-                  <div className="pt-2 flex justify-end">
-                    <button
-                      onClick={() => toggleExpandArticle(item.id)}
-                      className="text-xs font-medium text-slate-600 hover:text-orange-600 bg-slate-100 hover:bg-orange-50 border border-slate-200 hover:border-orange-200 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
-                    >
-                      {isLoadingThisDetail ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-500" />
-                      ) : isExpanded ? (
-                        <ChevronUp className="w-3.5 h-3.5" />
-                      ) : (
-                        <ChevronDown className="w-3.5 h-3.5" />
-                      )}
-                      <span>
-                        {isExpanded ? 'بستن متن کامل خبر' : 'مطالعه متن کامل (Lazy Loading)'}
-                      </span>
-                    </button>
-                  </div>
+                {/* Footer Expand Button */}
+                <div className="pt-2 border-t border-gray-100 flex items-center justify-between">
+                  <button
+                    onClick={() => toggleExpandArticle(item.id)}
+                    className="text-xs text-gray-500 hover:text-gray-900 font-medium flex items-center gap-1 transition-colors"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-orange-500" />
+                    <span>{isExpanded ? 'بستن متن کامل' : 'مشاهده متن کامل خبر'}</span>
+                    {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                  </button>
+
+                  {item.translated_title && (
+                    <span className="text-[10px] text-gray-400 font-mono">
+                      Article ID: #{item.id}
+                    </span>
+                  )}
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Model Selection Modal for Re-translating an Article */}
+      {selectedArticleForTranslate && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full border border-gray-200 shadow-2xl overflow-hidden p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2 text-orange-600 font-bold text-sm">
+                <Sparkles className="w-4 h-4" />
+                <span>انتخاب موتور هوش مصنوعی برای ترجمه</span>
+              </div>
+              <button
+                onClick={() => setSelectedArticleForTranslate(null)}
+                className="text-gray-400 hover:text-gray-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-xs text-gray-500 font-semibold">خبر انتخابی:</p>
+              <p className="text-xs font-bold text-gray-800 ltr text-left line-clamp-2 bg-gray-50 p-2 rounded border border-gray-200">
+                {selectedArticleForTranslate.title}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-gray-700 block">
+                موتور هوش مصنوعی مورد نظر را انتخاب کنید:
+              </label>
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                {AI_MODELS.map((m) => (
+                  <button
+                    key={m.id}
+                    onClick={() => setChosenModel(m.id)}
+                    className={`w-full text-right p-3 rounded-xl border transition-all flex items-start justify-between gap-3 ${
+                      chosenModel === m.id
+                        ? 'bg-orange-50 border-orange-400 ring-2 ring-orange-400/20'
+                        : 'bg-gray-50 hover:bg-gray-100 border-gray-200'
+                    }`}
+                  >
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-gray-900">{m.name}</span>
+                        <span className={`text-[9px] px-1.5 py-0.2 rounded font-medium ${m.color}`}>
+                          {m.badge}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-600">{m.desc}</p>
+                      <span className="text-[10px] text-gray-400 font-mono block">{m.provider}</span>
+                    </div>
+
+                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-1 ${
+                      chosenModel === m.id ? 'border-orange-500 bg-orange-500 text-white' : 'border-gray-300'
+                    }`}>
+                      {chosenModel === m.id && <Check className="w-3 h-3" />}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+              <button
+                onClick={() => setSelectedArticleForTranslate(null)}
+                className="text-xs text-gray-600 hover:bg-gray-100 px-3 py-2 rounded-lg"
+              >
+                انصراف
+              </button>
+
+              <button
+                onClick={() => executeSingleTranslate(selectedArticleForTranslate.id, chosenModel)}
+                className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-4 py-2 rounded-lg flex items-center gap-1.5 shadow-xs"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>شروع ترجمه با {AI_MODELS.find(x => x.id === chosenModel)?.name || 'AI'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Article Translation Audit History Modal */}
+      {historyArticle && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full border border-gray-200 shadow-2xl overflow-hidden p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <div className="flex items-center gap-2 text-indigo-700 font-bold text-sm">
+                <History className="w-4 h-4 text-indigo-600" />
+                <span>آرشیو و تاریخچه تغییرات ترجمه خبر (D1 Audit History)</span>
+              </div>
+              <button
+                onClick={() => setHistoryArticle(null)}
+                className="text-gray-400 hover:text-gray-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[11px] text-gray-400 font-mono">Article ID: #{historyArticle.id}</span>
+              <h4 className="text-xs font-bold text-gray-900 leading-snug">
+                {historyArticle.title}
+              </h4>
+            </div>
+
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+              {loadingHistory ? (
+                <div className="py-8 text-center text-xs text-indigo-600 flex items-center justify-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>در حال استخراج سوابق ترجمه از دیتابیس D1...</span>
+                </div>
+              ) : historyLogs.length === 0 ? (
+                <div className="bg-gray-50 border border-dashed border-gray-200 rounded-xl p-6 text-center text-xs text-gray-500">
+                  سابقه‌ای برای ترجمه این خبر ثبت نشده است.
+                </div>
+              ) : (
+                historyLogs.map((item, idx) => (
+                  <div key={item.id || idx} className="bg-indigo-50/40 border border-indigo-100 rounded-xl p-3.5 space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-indigo-900 bg-indigo-100/80 border border-indigo-200 text-[10px] px-2 py-0.5 rounded font-mono">
+                        مدل: {item.model_used || 'Standard AI'}
+                      </span>
+                      <span className="text-[10px] text-gray-400 font-mono">
+                        {item.translated_at ? new Date(item.translated_at).toLocaleString('fa-IR') : '-'}
+                      </span>
+                    </div>
+
+                    <p className="font-bold text-gray-900 leading-snug">
+                      {item.translated_title}
+                    </p>
+
+                    <p className="text-gray-700 text-[11px] leading-relaxed line-clamp-3 bg-white p-2 rounded border border-gray-100">
+                      {item.translated_content}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-gray-100">
+              <button
+                onClick={() => setHistoryArticle(null)}
+                className="bg-gray-800 text-white text-xs px-4 py-2 rounded-lg font-bold"
+              >
+                بستن
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

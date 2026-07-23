@@ -86,11 +86,29 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
   };
 
   const presetSources = [
-    { name: 'NASA Breaking News', url: 'https://www.nasa.gov/rss/dyn/breaking_news.rss', lang: 'en' },
-    { name: 'The Verge All Posts', url: 'https://www.theverge.com/rss/index.xml', lang: 'en' },
-    { name: 'BBC Technology', url: 'http://feeds.bbci.co.uk/news/technology/rss.xml', lang: 'en' },
-    { name: 'MIT Technology Review', url: 'https://www.technologyreview.com/feed/', lang: 'en' },
+    // Crypto
+    { name: 'CoinDesk Crypto News', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', lang: 'en', category: 'crypto', label: 'ارز دیجیتال' },
+    { name: 'Cointelegraph', url: 'https://cointelegraph.com/rss', lang: 'en', category: 'crypto', label: 'ارز دیجیتال' },
+    { name: 'Decrypt Crypto', url: 'https://decrypt.co/feed', lang: 'en', category: 'crypto', label: 'ارز دیجیتال' },
+    
+    // Gaming
+    { name: 'IGN Gaming News', url: 'https://feeds.feedburner.com/ign/news', lang: 'en', category: 'gaming', label: 'گیمینگ' },
+    { name: 'GameSpot News', url: 'https://www.gamespot.com/feeds/news/', lang: 'en', category: 'gaming', label: 'گیمینگ' },
+    { name: 'Polygon', url: 'https://www.polygon.com/rss/index.xml', lang: 'en', category: 'gaming', label: 'گیمینگ' },
+    
+    // Tech
+    { name: 'TechCrunch', url: 'https://techcrunch.com/feed/', lang: 'en', category: 'tech', label: 'فناوری' },
+    { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml', lang: 'en', category: 'tech', label: 'فناوری' },
+    { name: 'Wired Tech News', url: 'https://www.wired.com/feed/category/gear/latest/rss', lang: 'en', category: 'tech', label: 'فناوری' },
+    { name: 'BBC Technology', url: 'http://feeds.bbci.co.uk/news/technology/rss.xml', lang: 'en', category: 'tech', label: 'فناوری' },
+    { name: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/index', lang: 'en', category: 'tech', label: 'فناوری' },
   ];
+
+  const [activeCategory, setActiveCategory] = useState<'all' | 'crypto' | 'gaming' | 'tech'>('all');
+
+  const filteredPresets = activeCategory === 'all'
+    ? presetSources
+    : presetSources.filter((p) => p.category === activeCategory);
 
   const handleSelectPreset = (preset: { name: string; url: string; lang: string }) => {
     setName(preset.name);
@@ -217,21 +235,50 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
         </form>
 
         {/* Presets */}
-        <div className="pt-2 border-t border-gray-100">
-          <p className="text-xs font-semibold text-gray-500 mb-2 flex items-center gap-1">
+        <div className="pt-2 border-t border-gray-100 space-y-2">
+          <p className="text-xs font-semibold text-gray-700 flex items-center gap-1">
             <Sparkles className="w-3.5 h-3.5 text-orange-500" />
             پیشنهادهای آماده برای تست سریع:
           </p>
-          <div className="space-y-1.5">
-            {presetSources.map((preset, idx) => (
+
+          {/* Category Filter Pills */}
+          <div className="flex flex-wrap gap-1">
+            {[
+              { id: 'all', name: 'همه' },
+              { id: 'crypto', name: '🪙 ارز دیجیتال' },
+              { id: 'gaming', name: '🎮 گیمینگ' },
+              { id: 'tech', name: '💻 فناوری' },
+            ].map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setActiveCategory(cat.id as any)}
+                className={`text-[11px] px-2 py-1 rounded-md transition-all font-medium ${
+                  activeCategory === cat.id
+                    ? 'bg-orange-500 text-white shadow-2xs'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {cat.name}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+            {filteredPresets.map((preset, idx) => (
               <button
                 key={idx}
                 type="button"
                 onClick={() => handleSelectPreset(preset)}
-                className="w-full text-right bg-gray-50 hover:bg-orange-50/50 border border-gray-200 p-2 rounded-lg text-xs text-gray-700 flex items-center justify-between transition-colors"
+                className="w-full text-right bg-gray-50 hover:bg-orange-50/60 border border-gray-200 hover:border-orange-200 p-2 rounded-lg text-xs text-gray-700 flex items-center justify-between transition-colors"
               >
-                <span className="font-medium text-gray-800">{preset.name}</span>
-                <span className="text-[10px] text-orange-700 bg-orange-100/70 px-1.5 py-0.5 rounded border border-orange-200">انتخاب</span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="font-medium text-gray-800 truncate">{preset.name}</span>
+                  <span className="text-[9px] text-sky-700 bg-sky-50 px-1 py-0.2 rounded border border-sky-100 shrink-0">
+                    {preset.label}
+                  </span>
+                </div>
+                <span className="text-[10px] text-orange-700 bg-orange-100/70 px-1.5 py-0.5 rounded border border-orange-200 shrink-0">انتخاب</span>
               </button>
             ))}
           </div>

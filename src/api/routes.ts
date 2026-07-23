@@ -11,26 +11,125 @@ api.use('*', cors({
   allowHeaders: ['Content-Type', 'Authorization'],
 }));
 
-let indexesEnsured = false;
-export async function ensureIndexes(db: any) {
-  if (indexesEnsured || !db) return;
+let tablesEnsured = false;
+export async function ensureTablesAndLogs(db: any) {
+  if (tablesEnsured || !db) return;
   try {
-    indexesEnsured = true;
+    tablesEnsured = true;
     await db.batch([
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS sources (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          url TEXT NOT NULL UNIQUE,
+          language TEXT DEFAULT 'en'
+        );
+      `),
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS articles (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          source_id INTEGER NOT NULL,
+          original_url TEXT NOT NULL UNIQUE,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          published_at TEXT,
+          created_at TEXT DEFAULT (datetime('now')),
+          translation_status TEXT DEFAULT 'pending',
+          FOREIGN KEY (source_id) REFERENCES sources(id)
+        );
+      `),
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS translations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          article_id INTEGER NOT NULL UNIQUE,
+          target_language TEXT DEFAULT 'persian',
+          translated_title TEXT NOT NULL,
+          translated_content TEXT NOT NULL,
+          translated_at TEXT DEFAULT (datetime('now')),
+          model_used TEXT,
+          ai_model TEXT,
+          FOREIGN KEY (article_id) REFERENCES articles(id)
+        );
+      `),
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS translation_history (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          article_id INTEGER NOT NULL,
+          target_language TEXT DEFAULT 'persian',
+          translated_title TEXT NOT NULL,
+          translated_content TEXT NOT NULL,
+          translated_at TEXT DEFAULT (datetime('now')),
+          model_used TEXT NOT NULL,
+          FOREIGN KEY (article_id) REFERENCES articles(id)
+        );
+      `),
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS execution_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          task_type TEXT NOT NULL,
+          status TEXT NOT NULL,
+          items_processed INTEGER DEFAULT 0,
+          items_success INTEGER DEFAULT 0,
+          error_message TEXT,
+          duration_ms INTEGER DEFAULT 0,
+          executed_at TEXT DEFAULT (datetime('now'))
+        );
+      `),
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS system_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_type TEXT NOT NULL,
+          description TEXT NOT NULL,
+          created_at TEXT DEFAULT (datetime('now'))
+        );
+      `),
       db.prepare('CREATE INDEX IF NOT EXISTS idx_articles_created_at ON articles(created_at DESC);'),
       db.prepare('CREATE INDEX IF NOT EXISTS idx_articles_status ON articles(translation_status);'),
       db.prepare('CREATE INDEX IF NOT EXISTS idx_articles_source_id ON articles(source_id);'),
       db.prepare('CREATE INDEX IF NOT EXISTS idx_translations_model ON translations(model_used);'),
-      db.prepare('CREATE INDEX IF NOT EXISTS idx_translations_ai_model ON translations(ai_model);'),
+      db.prepare('CREATE INDEX IF NOT EXISTS idx_execution_logs_time ON execution_logs(executed_at DESC);'),
+      db.prepare('CREATE INDEX IF NOT EXISTS idx_translation_history_article ON translation_history(article_id);'),
     ]);
   } catch (err) {
-    console.warn('Index initialization check:', err);
+    console.warn('Database table auto-initialization check:', err);
   }
 }
 
-// Auto-run index check middleware
+export async function recordExecutionLog(
+  db: any,
+  taskType: string,
+  status: string,
+  itemsProcessed: number = 0,
+  itemsSuccess: number = 0,
+  errorMessage: string | null = null,
+  durationMs: number = 0
+) {
+  if (!db) return;
+  try {
+    await db.prepare(`
+      INSERT INTO execution_logs (task_type, status, items_processed, items_success, error_message, duration_ms, executed_at)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+    `).bind(taskType, status, itemsProcessed, itemsSuccess, errorMessage, durationMs).run();
+  } catch (e) {
+    console.warn('Failed to insert execution log:', e);
+  }
+}
+
+export async function recordSystemEvent(db: any, eventType: string, description: string) {
+  if (!db) return;
+  try {
+    await db.prepare(`
+      INSERT INTO system_events (event_type, description, created_at)
+      VALUES (?, ?, datetime('now'))
+    `).bind(eventType, description).run();
+  } catch (e) {
+    console.warn('Failed to insert system event:', e);
+  }
+}
+
+// Auto-run schema & index check middleware on Worker request
 api.use('*', async (c, next) => {
-  ensureIndexes(c.env.DB).catch(() => {});
+  ensureTablesAndLogs(c.env.DB).catch(() => {});
   await next();
 });
 
@@ -212,21 +311,118 @@ api.get('/sources', async (c) => {
 
 // POST /api/trigger-scraper - Trigger scraper manually
 api.post('/trigger-scraper', async (c) => {
+  const start = Date.now();
   try {
     const { scraper } = await import('../cron/scraper');
     const result = await scraper(c.env);
+    const durationMs = Date.now() - start;
+
+    await recordExecutionLog(
+      c.env.DB,
+      'manual_scraper',
+      result.errors.length > 0 ? (result.insertedArticles > 0 ? 'partial' : 'failed') : 'success',
+      result.scrapedSources,
+      result.insertedArticles,
+      result.errors.join('; ') || null,
+      durationMs
+    );
+    await recordSystemEvent(c.env.DB, 'SCRAPER_TRIGGERED', `دریافت ${result.insertedArticles} خبر جدید از ${result.scrapedSources} منبع RSS`);
+
     return c.json({ success: true, data: result, error: null }, 200);
   } catch (err: any) {
+    const durationMs = Date.now() - start;
+    await recordExecutionLog(c.env.DB, 'manual_scraper', 'failed', 0, 0, err.message, durationMs);
     return c.json({ success: false, data: null, error: err.message }, 500);
   }
 });
 
 // POST /api/trigger-translator - Trigger translator manually
 api.post('/trigger-translator', async (c) => {
+  const start = Date.now();
   try {
     const { translator } = await import('../cron/translator');
     const result = await translator(c.env);
+    const durationMs = Date.now() - start;
+
+    await recordExecutionLog(
+      c.env.DB,
+      'manual_translator',
+      result.errors.length > 0 ? (result.successCount > 0 ? 'partial' : 'failed') : 'success',
+      result.processed,
+      result.successCount,
+      result.errors.join('; ') || null,
+      durationMs
+    );
+    await recordSystemEvent(c.env.DB, 'TRANSLATOR_TRIGGERED', `ترجمه موفق ${result.successCount} خبر از ${result.processed} خبر در صف`);
+
     return c.json({ success: true, data: result, error: null }, 200);
+  } catch (err: any) {
+    const durationMs = Date.now() - start;
+    await recordExecutionLog(c.env.DB, 'manual_translator', 'failed', 0, 0, err.message, durationMs);
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// GET /api/logs - Fetch execution logs and system audit events
+api.get('/logs', async (c) => {
+  try {
+    const executionLogs = await c.env.DB.prepare(`
+      SELECT id, task_type, status, items_processed, items_success, error_message, duration_ms, executed_at
+      FROM execution_logs
+      ORDER BY id DESC
+      LIMIT 50
+    `).all();
+
+    const systemEvents = await c.env.DB.prepare(`
+      SELECT id, event_type, description, created_at
+      FROM system_events
+      ORDER BY id DESC
+      LIMIT 30
+    `).all();
+
+    return c.json({
+      success: true,
+      data: {
+        execution_logs: executionLogs.results || [],
+        system_events: systemEvents.results || [],
+      },
+      error: null
+    }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// DELETE /api/logs - Clear logs history
+api.delete('/logs', async (c) => {
+  try {
+    await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM execution_logs'),
+      c.env.DB.prepare('DELETE FROM system_events'),
+    ]);
+    await recordSystemEvent(c.env.DB, 'LOGS_CLEARED', 'تاریخچه اجراها و لاگ‌های سیستم توسط کاربر پاکسازی شد');
+    return c.json({ success: true, data: { cleared: true }, error: null }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// GET /api/news/:id/history - Get translation audit log history for an article
+api.get('/news/:id/history', async (c) => {
+  try {
+    const id = c.req.param('id');
+    const history = await c.env.DB.prepare(`
+      SELECT id, article_id, target_language, translated_title, translated_content, translated_at, model_used
+      FROM translation_history
+      WHERE article_id = ?
+      ORDER BY id DESC
+    `).bind(id).all();
+
+    return c.json({
+      success: true,
+      data: history.results || [],
+      error: null
+    }, 200);
   } catch (err: any) {
     return c.json({ success: false, data: null, error: err.message }, 500);
   }
@@ -295,28 +491,77 @@ api.delete('/news/:id', async (c) => {
   }
 });
 
-// POST /api/news/:id/translate - Translate a single article using AI
+// POST /api/news/:id/translate - Translate or Re-translate a single article using selected AI model
 api.post('/news/:id/translate', async (c) => {
   try {
     const id = c.req.param('id');
+    let body: { model?: string } = {};
+    try {
+      body = await c.req.json<{ model?: string }>();
+    } catch {}
+
+    const selectedModel = body.model || '@cf/meta/m2m100-1.2b';
+
     const article = await c.env.DB.prepare('SELECT * FROM articles WHERE id = ?').bind(id).first<any>();
     if (!article) {
       return c.json({ success: false, data: null, error: 'خبر پیدا نشد' }, 404);
     }
     await c.env.DB.prepare("UPDATE articles SET translation_status = 'processing' WHERE id = ?").bind(id).run();
 
-    const { translator } = await import('../cron/translator');
-    // Run full translator logic
-    await translator(c.env);
+    const { translateTextWithAI } = await import('../cron/translator');
 
-    const updatedTranslation = await c.env.DB.prepare('SELECT * FROM translations WHERE article_id = ?').bind(id).first<any>();
+    const [titleRes, contentRes] = await Promise.all([
+      translateTextWithAI(c.env, article.title, 'english', 'persian', selectedModel),
+      translateTextWithAI(c.env, article.content || article.title, 'english', 'persian', selectedModel),
+    ]);
+
+    const modelUsed = titleRes.modelUsed || contentRes.modelUsed || selectedModel;
+
+    // Delete existing translation if any, then insert new translation
+    await c.env.DB.prepare('DELETE FROM translations WHERE article_id = ?').bind(id).run();
+
+    await c.env.DB.prepare(`
+      INSERT INTO translations (
+        article_id, 
+        target_language, 
+        translated_title, 
+        translated_content, 
+        translated_at,
+        model_used,
+        ai_model
+      ) VALUES (?, 'persian', ?, ?, datetime('now'), ?, ?)
+    `).bind(
+      id,
+      titleRes.translatedText || article.title,
+      contentRes.translatedText || article.content || article.title,
+      modelUsed,
+      modelUsed
+    ).run();
+
+    // Also insert into translation_history table
+    try {
+      await c.env.DB.prepare(`
+        INSERT INTO translation_history (article_id, target_language, translated_title, translated_content, translated_at, model_used)
+        VALUES (?, 'persian', ?, ?, datetime('now'), ?)
+      `).bind(
+        id,
+        titleRes.translatedText || article.title,
+        contentRes.translatedText || article.content || article.title,
+        modelUsed
+      ).run();
+    } catch {}
+
+    await recordSystemEvent(c.env.DB, 'ARTICLE_TRANSLATED', `ترجمه خبر شماره ${id} با مدل ${modelUsed}`);
+
+    await c.env.DB.prepare("UPDATE articles SET translation_status = 'completed' WHERE id = ?").bind(id).run();
 
     return c.json({
       success: true,
       data: {
         id,
-        translated_title: updatedTranslation?.translated_title || article.title,
-        translated_content: updatedTranslation?.translated_content || article.content
+        translated_title: titleRes.translatedText || article.title,
+        translated_content: contentRes.translatedText || article.content,
+        model_used: modelUsed,
       },
       error: null
     }, 200);
@@ -325,15 +570,16 @@ api.post('/news/:id/translate', async (c) => {
   }
 });
 
-// POST /api/news/custom - Insert custom article and translate
+// POST /api/news/custom - Insert custom article and translate with selected AI model
 api.post('/news/custom', async (c) => {
   try {
-    const body = await c.req.json<{ title?: string; content?: string }>();
+    const body = await c.req.json<{ title?: string; content?: string; model?: string }>();
     if (!body.title) {
       return c.json({ success: false, data: null, error: 'عنوان خبر الزامی است' }, 400);
     }
     const title = body.title.trim();
     const content = (body.content || title).trim();
+    const selectedModel = body.model || '@cf/meta/m2m100-1.2b';
     const now = new Date().toISOString();
     const customUrl = `https://custom-entry.local/${Date.now()}`;
 
@@ -345,17 +591,43 @@ api.post('/news/custom', async (c) => {
     }
 
     const result = await c.env.DB.prepare(
-      "INSERT INTO articles (source_id, original_url, title, content, published_at, created_at, translation_status) VALUES (?, ?, ?, ?, ?, ?, 'pending')"
+      "INSERT INTO articles (source_id, original_url, title, content, published_at, created_at, translation_status) VALUES (?, ?, ?, ?, ?, ?, 'processing')"
     ).bind(sourceId, customUrl, title, content, now, now).run();
 
     const articleId = result.meta.last_row_id as number;
 
-    const { translator } = await import('../cron/translator');
-    await translator(c.env);
+    const { translateTextWithAI } = await import('../cron/translator');
+
+    const [titleRes, contentRes] = await Promise.all([
+      translateTextWithAI(c.env, title, 'english', 'persian', selectedModel),
+      translateTextWithAI(c.env, content, 'english', 'persian', selectedModel),
+    ]);
+
+    const modelUsed = titleRes.modelUsed || contentRes.modelUsed || selectedModel;
+
+    await c.env.DB.prepare(`
+      INSERT INTO translations (
+        article_id, 
+        target_language, 
+        translated_title, 
+        translated_content, 
+        translated_at,
+        model_used,
+        ai_model
+      ) VALUES (?, 'persian', ?, ?, datetime('now'), ?, ?)
+    `).bind(
+      articleId,
+      titleRes.translatedText || title,
+      contentRes.translatedText || content,
+      modelUsed,
+      modelUsed
+    ).run();
+
+    await c.env.DB.prepare("UPDATE articles SET translation_status = 'completed' WHERE id = ?").bind(articleId).run();
 
     return c.json({
       success: true,
-      data: { id: articleId, title },
+      data: { id: articleId, title, model_used: modelUsed },
       error: null
     }, 201);
   } catch (err: any) {
