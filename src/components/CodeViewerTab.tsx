@@ -34,6 +34,11 @@ database_id = "2815bd80-f483-4f9b-872d-93047309ed13"
 [ai]
 binding = "AI"
 
+# Cloudflare Workers Assets - Serve Vite React SPA from ./dist
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+
 # Cron Triggers - Executed every hour
 [triggers]
 crons = ["0 * * * *"]`,
