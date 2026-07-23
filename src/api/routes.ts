@@ -95,6 +95,52 @@ export async function ensureTablesAndLogs(db: any) {
   }
 }
 
+export async function pruneOldArticles(db: any) {
+  if (!db) return { prunedCount: 0 };
+  try {
+    // 1. Identify articles older than 7 days
+    const oldArticles = await db.prepare(`
+      SELECT id FROM articles 
+      WHERE (published_at < datetime('now', '-7 days') OR created_at < datetime('now', '-7 days'))
+        AND (content IS NOT NULL AND content != '')
+    `).all();
+
+    const idsToPrune = (oldArticles.results || []).map((r: any) => r.id);
+
+    if (idsToPrune.length === 0) {
+      return { prunedCount: 0 };
+    }
+
+    // 2. Prune heavy full-text content in articles and translations, preserving titles & metadata
+    await db.batch([
+      db.prepare(`
+        UPDATE articles 
+        SET content = '[محتوای متنی باسنوات بیش از ۷ روز برای مدیریت فضای دیتابیس D1 پاکسازی شد]'
+        WHERE (published_at < datetime('now', '-7 days') OR created_at < datetime('now', '-7 days'))
+      `),
+      db.prepare(`
+        UPDATE translations 
+        SET translated_content = '[متن ترجمه قدیمیتر از ۷ روز جهت بهینه‌سازی حافظه D1 پاکسازی گردید]'
+        WHERE article_id IN (
+          SELECT id FROM articles 
+          WHERE (published_at < datetime('now', '-7 days') OR created_at < datetime('now', '-7 days'))
+        )
+      `)
+    ]);
+
+    await recordSystemEvent(
+      db, 
+      'D1_GARBAGE_COLLECTION', 
+      `پاکسازی خودکار D1 انجام شد: متن سنگین ${idsToPrune.length} خبر قدیمی‌تر از ۷ روز جهت مدیریت سقف ۵۰۰ مگابایت حذف گردید.`
+    );
+
+    return { prunedCount: idsToPrune.length };
+  } catch (err: any) {
+    console.error('Error during D1 garbage collection:', err);
+    return { prunedCount: 0, error: err.message };
+  }
+}
+
 export async function recordExecutionLog(
   db: any,
   taskType: string,
@@ -332,6 +378,36 @@ api.post('/trigger-scraper', async (c) => {
   } catch (err: any) {
     const durationMs = Date.now() - start;
     await recordExecutionLog(c.env.DB, 'manual_scraper', 'failed', 0, 0, err.message, durationMs);
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// POST /api/prune-d1 - Trigger D1 Garbage Collection (Prune old news text > 7 days)
+api.post('/prune-d1', async (c) => {
+  const start = Date.now();
+  try {
+    const result = await pruneOldArticles(c.env.DB);
+    const durationMs = Date.now() - start;
+
+    await recordExecutionLog(
+      c.env.DB,
+      'd1_garbage_collection',
+      'success',
+      result.prunedCount,
+      result.prunedCount,
+      result.error || null,
+      durationMs
+    );
+
+    return c.json({
+      success: true,
+      data: {
+        message: `عملیات پاکسازی D1 با موفقیت انجام شد. متن ${result.prunedCount} خبر قدیمی‌تر از ۷ روز حذف شد.`,
+        pruned_count: result.prunedCount,
+      },
+      error: null,
+    }, 200);
+  } catch (err: any) {
     return c.json({ success: false, data: null, error: err.message }, 500);
   }
 });

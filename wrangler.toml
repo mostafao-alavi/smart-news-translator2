@@ -3,27 +3,28 @@ main = "src/index.ts"
 compatibility_date = "2026-07-23"
 compatibility_flags = [ "nodejs_compat" ]
 
-# فعالسازی سیستم جدید لاگینگ کلودفلر برای مانیتورینگ دقیقتر سیستم
+# فعال‌سازی سیستم جدید لاگینگ کلودفلر برای مانیتورینگ سیستم
 [observability]
 enabled = true
 
-# ۱. دیتابیس D1 (فقط برای ذخیره متادیتا، لاگها و اطلاعات کاربران)
+# ۱. دیتابیس D1 کلودفلر (ذخیره کامل متادیتا، اخبار، ترجمه‌ها و لاگ‌ها همراه با مدیریت حجم <500MB)
 [[d1_databases]]
 binding = "DB"
 database_name = "news-metadata-db"
 database_id = "2815bd80-f483-4f9b-872d-93047309ed13"
 
-# ۲. فضای ابری R2 (برای ذخیره فایل متنی مقالات انگلیسی و ترجمهها)
-[[r2_buckets]]
-binding = "CONTENT_BUCKET"
-bucket_name = "news-articles-storage"
+# ۲. فضای ابری R2 (غیرفعال‌سازی موقت جهت جلوگیری از ارور Billing در طرح رایگان)
+# در صورت فعال‌سازی R2 در پنل کلودفلر، می‌توانید کامنت این بخش را بردارید
+# [[r2_buckets]]
+# binding = "CONTENT_BUCKET"
+# bucket_name = "news-articles-storage"
 
-# ۳. مدلهای هوش مصنوعی بومی کلودفلر
+# ۳. مدل‌های هوش مصنوعی بومی کلودفلر (Workers AI)
 [ai]
 binding = "AI"
 
-# ۴. پیکربندی صفها (Queues)
-# الف: تعریف Worker فعلی به عنوان تولیدکننده پیام (پرتابگر به صف)
+# ۴. پیکربندی صف‌های پردازش ناهمگام (Cloudflare Queues)
+# الف: پرتابگر به صف (Producers)
 [[queues.producers]]
 binding = "SCRAPE_QUEUE"
 queue = "news-scrape-queue"
@@ -32,24 +33,22 @@ queue = "news-scrape-queue"
 binding = "TRANSLATE_QUEUE"
 queue = "news-translate-queue"
 
-# ب: تنظیم Worker برای پردازش پیامهای صف (مصرفکننده)
+# ب: مصرف‌کننده صف‌ها (Consumers)
 [[queues.consumers]]
 queue = "news-scrape-queue"
-max_batch_size = 5 # حداکثر ۵ فید همزمان برای جلوگیری از Time-out
+max_batch_size = 5 # حداکثر ۵ خبر همزمان جهت جلوگیری از Time-out
 max_concurrency = 2
 
 [[queues.consumers]]
 queue = "news-translate-queue"
-max_batch_size = 1 # ترجمه تکبهتک برای حفظ کیفیت خروجی هوش مصنوعی
-max_concurrency = 1 # کنترل دقیق Rate Limit گوگل
+max_batch_size = 1 # ترجمه تک‌به‌تک جهت رعایت دقیق نرخ درخواست‌ها (Rate Limit)
+max_concurrency = 1
 
-# Cloudflare Workers Assets - Serve Vite React SPA from ./dist
+# ۵. میزبانی فایل‌های فرانت‌اند SPA از پوشه ./dist
 [assets]
 directory = "./dist"
 not_found_handling = "single-page-application"
 
-# Cron Triggers - Executed every hour
+# ۶. کرون‌جاب‌های زمان‌بندی‌شده (ساعتی جهت اسکرپ، ترجمه و پاکسازی Garbage Collection دیتابیس D1)
 [triggers]
 crons = ["0 * * * *"]
-
-

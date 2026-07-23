@@ -463,6 +463,59 @@ app.delete('/api/logs', (req, res) => {
   });
 });
 
+// POST /api/prune-d1 (Prune old news text > 7 days to maintain <500MB D1 limit)
+app.post('/api/prune-d1', (req, res) => {
+  try {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+    let prunedCount = 0;
+
+    articles.forEach((a) => {
+      if ((a.published_at < sevenDaysAgo || a.created_at < sevenDaysAgo) && a.content) {
+        a.content = '[محتوای متنی باسنوات بیش از ۷ روز برای مدیریت فضای دیتابیس D1 پاکسازی شد]';
+        prunedCount++;
+      }
+    });
+
+    translations.forEach((t) => {
+      const parentArticle = articles.find((a) => a.id === t.article_id);
+      if (parentArticle && (parentArticle.published_at < sevenDaysAgo || parentArticle.created_at < sevenDaysAgo)) {
+        t.translated_content = '[متن ترجمه قدیمیتر از ۷ روز جهت بهینه‌سازی حافظه D1 پاکسازی گردید]';
+      }
+    });
+
+    if (prunedCount > 0) {
+      executionLogs.unshift({
+        id: nextLogId++,
+        task_type: 'd1_garbage_collection',
+        status: 'success',
+        items_processed: prunedCount,
+        items_success: prunedCount,
+        error_message: null,
+        duration_ms: 12,
+        executed_at: new Date().toISOString(),
+      });
+
+      systemEvents.unshift({
+        id: nextEventId++,
+        event_type: 'D1_GARBAGE_COLLECTION',
+        description: `پاکسازی خودکار D1 انجام شد: متن ${prunedCount} خبر قدیمی‌تر از ۷ روز جهت نگهداری زیر سقف ۵۰۰ مگابایت حذف شد.`,
+        created_at: new Date().toISOString(),
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        message: `عملیات پاکسازی D1 انجام شد. متن ${prunedCount} خبر قدیمی‌تر از ۷ روز پاکسازی گردید.`,
+        pruned_count: prunedCount,
+      },
+      error: null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, data: null, error: err.message });
+  }
+});
+
 // GET /api/health (Server & Worker health check)
 app.get('/api/health', (req, res) => {
   res.json({

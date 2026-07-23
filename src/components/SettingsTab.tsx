@@ -86,6 +86,7 @@ const API_ENDPOINTS = [
   { method: 'GET', path: '/api/health', title: 'بررسی سلامت سرور', desc: 'تست اتصال Cloudflare Worker و D1 Engine' },
   { method: 'POST', path: '/api/trigger-scraper', title: 'اجرای خودکار Scraper', desc: 'اسکرپ فیدها و افزودن اخبار جدید به D1' },
   { method: 'POST', path: '/api/trigger-translator', title: 'اجرای خودکار Translator', desc: 'ترجمه اخبار pending با Workers AI' },
+  { method: 'POST', path: '/api/prune-d1', title: 'پاکسازی D1 (Garbage Collection)', desc: 'حذف متن سنگین اخبار قدیمی‌تر از ۷ روز جهت نگهداری زیر ۵۰۰MB' },
 ];
 
 interface SettingsTabProps {
@@ -110,6 +111,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
   const [lastScraperResult, setLastScraperResult] = useState<any>(null);
   const [lastTranslatorResult, setLastTranslatorResult] = useState<any>(null);
+  const [isPruning, setIsPruning] = useState<boolean>(false);
 
   // Execution Logs and System Events from D1
   const [executionLogs, setExecutionLogs] = useState<ExecutionLogItem[]>([]);
@@ -195,6 +197,26 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     }
   };
 
+  const handleRunD1Prune = async () => {
+    addLog('🧹 Starting D1 Garbage Collection (Prune articles older than 7 days)...');
+    setIsPruning(true);
+    try {
+      const res = await fetch('/api/prune-d1', { method: 'POST' });
+      const json = await res.json();
+      if (json.success) {
+        addLog(`✅ D1 Garbage collection completed.`);
+        addLog(`📊 ${json.data?.message || 'پایان پاکسازی داده‌های D1'}`);
+      } else {
+        addLog(`❌ D1 Pruning failed: ${json.error}`);
+      }
+      fetchD1Logs();
+    } catch (err: any) {
+      addLog(`❌ D1 Pruning error: ${err.message}`);
+    } finally {
+      setIsPruning(false);
+    }
+  };
+
   const handleTestEndpointInModal = async (path: string, method: string) => {
     setActiveApiModal(path);
     setApiResponseJson(null);
@@ -272,7 +294,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         </div>
 
         {/* Action Trigger Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
           {/* Card 1: Scraper Routine */}
           <div className="bg-gray-50 border border-gray-200/80 rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
@@ -338,6 +360,34 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                   {lastTranslatorResult.successCount ?? 0} ترجمه موفق
                 </span>
               )}
+            </div>
+          </div>
+
+          {/* Card 3: D1 Garbage Collection (Prune old text > 7 days) */}
+          <div className="bg-gray-50 border border-gray-200/80 rounded-xl p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-emerald-700 flex items-center gap-1.5">
+                <Trash2 className="w-4 h-4" />
+                ۳. مدیریت و پاکسازی D1
+              </span>
+              <span className="text-[10px] text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded border border-emerald-200 font-medium">
+                نگهداشت حافظه &lt;500MB
+              </span>
+            </div>
+
+            <p className="text-xs text-gray-600 leading-relaxed">
+              حذف متن سنگین اخبار قدیمی‌تر از ۷ روز جهت جلوگیری از پر شدن دیتابیس D1.
+            </p>
+
+            <div className="pt-2 flex items-center justify-between">
+              <button
+                onClick={handleRunD1Prune}
+                disabled={isPruning}
+                className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-xs px-3.5 py-2 rounded-lg font-medium transition-all flex items-center space-x-1.5 space-x-reverse disabled:opacity-50 shadow-2xs"
+              >
+                <Trash2 className={`w-3.5 h-3.5 text-emerald-600 ${isPruning ? 'animate-spin' : ''}`} />
+                <span>{isPruning ? 'در حال پاکسازی...' : 'اجرای پاکسازی D1'}</span>
+              </button>
             </div>
           </div>
         </div>

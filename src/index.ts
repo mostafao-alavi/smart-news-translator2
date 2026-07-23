@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/cloudflare-workers';
-import apiRoutes from './api/routes';
+import apiRoutes, { pruneOldArticles } from './api/routes';
 import { scraper, extractFullArticleText } from './cron/scraper';
 import { translator } from './cron/translator';
 import { Env, ApiResponse, ScheduledEvent, ExecutionContext, MessageBatch } from './types';
@@ -72,12 +72,17 @@ export default {
     ctx.waitUntil(
       (async () => {
         try {
-          // 1. Run RSS Scraper
+          // 1. Run D1 Data Pruning / Garbage Collection (Clear content older than 7 days to maintain < 500MB limit)
+          console.log('Starting D1 Garbage Collection step...');
+          const pruneResult = await pruneOldArticles(env.DB);
+          console.log('D1 Pruning finished:', JSON.stringify(pruneResult));
+
+          // 2. Run RSS Scraper
           console.log('Starting scheduled scraper step...');
           const scraperResult = await scraper(env);
           console.log('Scraper finished:', JSON.stringify(scraperResult));
 
-          // 2. Run AI Translator
+          // 3. Run AI Translator
           console.log('Starting scheduled translator step...');
           const translatorResult = await translator(env);
           console.log('Translator finished:', JSON.stringify(translatorResult));
@@ -95,18 +100,19 @@ export default {
     if (batch.queue === 'news-translate-queue') {
       for (const message of batch.messages) {
         try {
-          let rawText = '';
-          if (message.body?.hash && env.CONTENT_BUCKET) {
-            // 1. Read raw text from Cloudflare R2 Bucket
-            const rawFile = await env.CONTENT_BUCKET.get(`english/${message.body.hash}.txt`);
-            if (rawFile) {
-              rawText = await rawFile.text();
+          let rawText = message.body?.text || '';
+          if (!rawText && message.body?.hash && env.CONTENT_BUCKET) {
+            try {
+              const rawFile = await env.CONTENT_BUCKET.get(`english/${message.body.hash}.txt`);
+              if (rawFile) {
+                rawText = await rawFile.text();
+              }
+            } catch (r2Err) {
+              console.warn('R2 bucket fetch skipped/paused:', r2Err);
             }
-          } else if (message.body?.text) {
-            rawText = message.body.text;
           }
 
-          // 2. Fast classification with Cloudflare Workers AI
+          // Fast classification with Cloudflare Workers AI
           let category = 'technology';
           if (env.AI && rawText) {
             try {
@@ -122,14 +128,13 @@ export default {
             }
           }
 
-          // 3. Update metadata & category in D1 Database
+          // Update metadata & category in D1 Database
           if (env.DB && message.body?.id) {
             await env.DB.prepare("UPDATE articles SET status = 'translated', category = ? WHERE id = ?")
               .bind(category, message.body.id)
               .run();
           }
 
-          // Acknowledge task completion
           message.ack();
         } catch (err) {
           console.error('Error processing translate queue message:', err);
@@ -148,19 +153,28 @@ export default {
 
             if (fullText && fullText.length > 50) {
               const fileHash = hash || `article-${id || Date.now()}`;
-              const filePath = `english/${fileHash}.txt`;
 
-              // 2. Save full text to R2 storage
-              if (env.CONTENT_BUCKET) {
-                await env.CONTENT_BUCKET.put(filePath, fullText);
+              // 2. Direct storage into Cloudflare D1 database (Focus on D1)
+              if (env.DB && id) {
+                await env.DB.prepare('UPDATE articles SET content = ? WHERE id = ?')
+                  .bind(fullText, id)
+                  .run();
               }
 
-              // 3. Dispatch to translate queue
+              // Optional: Save to R2 if available
+              if (env.CONTENT_BUCKET) {
+                try {
+                  await env.CONTENT_BUCKET.put(`english/${fileHash}.txt`, fullText);
+                } catch (r2Err) {
+                  console.warn('R2 Storage skipped:', r2Err);
+                }
+              }
+
+              // 3. Dispatch message to translate queue
               if (env.TRANSLATE_QUEUE) {
                 await env.TRANSLATE_QUEUE.send({
                   id: id,
                   hash: fileHash,
-                  contentPath: filePath,
                   text: fullText,
                 });
               }
