@@ -1,4 +1,4 @@
-name = "smart-news-aggregator"
+name = "smart-news-translator2"
 main = "src/index.ts"
 compatibility_date = "2026-07-23"
 compatibility_flags = [ "nodejs_compat" ]
@@ -13,17 +13,11 @@ binding = "DB"
 database_name = "news-metadata-db"
 database_id = "2815bd80-f483-4f9b-872d-93047309ed13"
 
-# ۲. فضای ابری R2 (غیرفعال‌سازی موقت جهت جلوگیری از ارور Billing در طرح رایگان)
-# در صورت فعال‌سازی R2 در پنل کلودفلر، می‌توانید کامنت این بخش را بردارید
-# [[r2_buckets]]
-# binding = "CONTENT_BUCKET"
-# bucket_name = "news-articles-storage"
-
-# ۳. مدل‌های هوش مصنوعی بومی کلودفلر (Workers AI)
+# ۲. مدل‌های هوش مصنوعی بومی کلودفلر (Workers AI)
 [ai]
 binding = "AI"
 
-# ۴. پیکربندی صف‌های پردازش ناهمگام (Cloudflare Queues)
+# ۳. پیکربندی صف‌های پردازش ناهمگام (Cloudflare Queues)
 # الف: پرتابگر به صف (Producers)
 [[queues.producers]]
 binding = "SCRAPE_QUEUE"
@@ -44,11 +38,12 @@ queue = "news-translate-queue"
 max_batch_size = 1 # ترجمه تک‌به‌تک جهت رعایت دقیق نرخ درخواست‌ها (Rate Limit)
 max_concurrency = 1
 
-# ۵. میزبانی فایل‌های فرانت‌اند SPA از پوشه ./dist
+# ۴. میزبانی فایل‌های فرانت‌اند SPA از پوشه ./dist
 [assets]
 directory = "./dist"
 not_found_handling = "single-page-application"
 
-# ۶. کرون‌جاب‌های زمان‌بندی‌شده (ساعتی جهت اسکرپ، ترجمه و پاکسازی Garbage Collection دیتابیس D1)
+# ۵. کرون‌جاب‌های زمان‌بندی‌شده (ساعتی جهت اسکرپ، ترجمه و پاکسازی Garbage Collection دیتابیس D1)
 [triggers]
 crons = ["0 * * * *"]
+
