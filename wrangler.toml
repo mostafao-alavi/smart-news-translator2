@@ -1,0 +1,27 @@
+name = "news-worker"
+main = "src/index.ts"
+# بهروزرسانی به تاریخ جدیدتر برای بهرهمندی از آخرین بهینهسازیهای موتور V8 کلودفلر
+compatibility_date = "2024-07-23"
+# فعالسازی پشتیبانی از ماژولهای Node.js (برای کتابخانههای اسکرپ و پارس RSS بسیار حیاتی است)
+compatibility_flags = [ "nodejs_compat" ]
+
+# فعالسازی سیستم جدید لاگینگ کلودفلر برای مانیتورینگ دقیقتر سیستم
+[observability]
+enabled = true
+
+# Cloudflare D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "news-db"
+database_id = "2815bd80-f483-4f9b-872d-93047309ed13"
+# (اختیاری) در صورت نیاز به دیتابیس مجزا برای محیط تست لوکال، آیدی آن را اینجا قرار دهید
+# preview_database_id = "UUID_دیتابیس_تست"
+
+# Cloudflare Workers AI Binding
+[ai]
+binding = "AI"
+
+# Cron Triggers - Executed every hour
+[triggers]
+crons = ["0 * * * *"]
+

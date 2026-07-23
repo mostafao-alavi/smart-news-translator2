@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Smart News Aggregator and Translator",
+  "description": "Cloudflare Worker and Hono-based RSS news scraper and AI translator using Cloudflare D1 and Workers AI",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
