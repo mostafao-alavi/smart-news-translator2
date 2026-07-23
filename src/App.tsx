@@ -326,7 +326,7 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-gray-200 bg-white py-6 mt-12 text-center text-xs text-gray-500">
         <p>
-          توسعه‌یافته بر پایه معمار ارشد Cloudflare Worker • فریمورک Hono • دیتابیس Cloudflare D1 • مدل هوش مصنوعی @cf/meta/m2m100-1.2b
+          توسعه‌یافته بر پایه معمار ارشد Cloudflare Worker • فریمورک Hono • دیتابیس Cloudflare D1 • مدل‌های هوش مصنوعی Workers AI (@cf/meta/m2m100-1.2b & @cf/ai4bharat/indictrans2-en-indic-1B)
         </p>
       </footer>
     </div>

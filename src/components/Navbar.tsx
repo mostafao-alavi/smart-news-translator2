@@ -33,7 +33,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </span>
               </div>
               <p className="text-xs text-gray-500 hidden sm:block">
-                Hono Framework • Cloudflare D1 • Workers AI (@cf/meta/m2m100-1.2b)
+                Hono Framework • Cloudflare D1 • Workers AI (@cf/meta/m2m100-1.2b & @cf/ai4bharat/indictrans2-en-indic-1B)
               </p>
             </div>
           </div>

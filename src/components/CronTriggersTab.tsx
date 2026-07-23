@@ -148,7 +148,7 @@ export const CronTriggersTab: React.FC<CronTriggersTabProps> = ({
                 ۲. تابع ترجمه هوشمند (src/cron/translator.ts)
               </span>
               <span className="text-[10px] text-orange-700 bg-orange-100/80 px-2 py-0.5 rounded border border-orange-200 font-mono">
-                @cf/meta/m2m100-1.2b
+                Workers AI (@cf/meta/m2m100-1.2b & @cf/ai4bharat/indictrans2-en-indic-1B)
               </span>
             </div>
 
