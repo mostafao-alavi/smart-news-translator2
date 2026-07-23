@@ -36,7 +36,7 @@ interface SourcesTabProps {
     selector?: string,
     scrape_limit?: number,
     is_active?: boolean
-  ) => Promise<boolean>;
+  ) => Promise<{ success: boolean; data?: any; error?: string }>;
   onDeleteSource: (id: number) => void;
   onUpdateSource: (id: number, data: Partial<SourceItem>) => Promise<boolean>;
   onBulkDeleteSources: (ids: number[]) => Promise<boolean>;
@@ -124,7 +124,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    const success = await onAddSource(
+    const res = await onAddSource(
       name.trim(),
       url.trim(),
       language,
@@ -135,7 +135,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
     );
     setIsSubmitting(false);
 
-    if (success) {
+    if (res.success) {
       setSuccessMsg(`منبع "${name}" با موفقیت ذخیره و استانداردسازی شد.`);
       setName('');
       setUrl('');
@@ -143,7 +143,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
       setTestResult(null);
       setTimeout(() => setSuccessMsg(null), 4000);
     } else {
-      setErrorMsg('خطا در ثبت منبع جدید (احتمالاً آدرس تکراری است یا فیلدها معتبر نیستند).');
+      setErrorMsg(res.error || 'خطا در ثبت منبع جدید.');
     }
   };
 
@@ -210,7 +210,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    const success = await onAddSource(
+    const res = await onAddSource(
       preset.name,
       preset.url,
       preset.lang,
@@ -221,11 +221,11 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
     );
     setAddingPresetUrl(null);
 
-    if (success) {
+    if (res.success) {
       setSuccessMsg(`منبع "${preset.name}" فوراً اضافه و فعال گردید.`);
       setTimeout(() => setSuccessMsg(null), 4000);
     } else {
-      setErrorMsg('این منبع قبلاً ثبت شده یا آدرس آن تکراری است.');
+      setErrorMsg(res.error || 'خطا در ثبت منبع جدید.');
     }
   };
 
@@ -655,8 +655,9 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                 </div>
               ) : (
                 filteredPresetSources.map((preset, idx) => {
+                  const normalizeUrl = (u: string) => u.trim().toLowerCase().replace(/\/+$/, '');
                   const isAlreadyAdded = sources.some(
-                    (s) => s.url.toLowerCase().trim() === preset.url.toLowerCase().trim()
+                    (s) => normalizeUrl(s.url) === normalizeUrl(preset.url)
                   );
                   const isAddingThis = addingPresetUrl === preset.url;
 

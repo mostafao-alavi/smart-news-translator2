@@ -556,12 +556,15 @@ app.post('/api/sources', (req, res) => {
     const trimmedUrl = url.trim();
     const trimmedName = name.trim();
 
-    const existing = sources.find((s) => s.url.toLowerCase() === trimmedUrl.toLowerCase());
+    const normalizeUrl = (u: string) => u.trim().toLowerCase().replace(/\/+$/, '');
+    const cleanInputUrl = normalizeUrl(trimmedUrl);
+
+    const existing = sources.find((s) => normalizeUrl(s.url) === cleanInputUrl);
     if (existing) {
       return res.status(409).json({
         success: false,
         data: null,
-        error: 'این آدرس منبع قبلاً در سیستم ثبت شده است',
+        error: `آدرس منبع "${trimmedUrl}" قبلاً با نام "${existing.name}" در سیستم ثبت شده است.`,
       });
     }
 

@@ -122,7 +122,7 @@ export const AppDashboard: React.FC = () => {
     selector?: string,
     scrape_limit: number = 10,
     is_active: boolean = true
-  ) => {
+  ): Promise<{ success: boolean; data?: any; error?: string }> => {
     try {
       const res = await fetch('/api/sources', {
         method: 'POST',
@@ -134,12 +134,13 @@ export const AppDashboard: React.FC = () => {
       if (res.ok && json.success) {
         fetchSources();
         fetchStats();
-        return true;
+        return { success: true, data: json.data };
       }
-    } catch (e) {
+      return { success: false, error: json.error || 'خطا در ثبت منبع جدید' };
+    } catch (e: any) {
       console.error('Error adding source:', e);
+      return { success: false, error: e.message || 'خطا در برقراری ارتباط با سرور' };
     }
-    return false;
   };
 
   // Update Source via PUT /api/sources/:id

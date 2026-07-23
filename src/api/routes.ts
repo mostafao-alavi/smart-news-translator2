@@ -315,16 +315,18 @@ api.post('/sources', async (c) => {
     const limit = typeof body.scrape_limit === 'number' && body.scrape_limit > 0 ? body.scrape_limit : 10;
     const active = body.is_active === false || body.is_active === 0 ? 0 : 1;
 
+    const normalizeUrl = (u: string) => u.trim().toLowerCase().replace(/\/+$/, '');
+    const cleanInputUrl = normalizeUrl(trimmedUrl);
+
     // Check if source URL already exists
-    const existing = await c.env.DB.prepare(
-      'SELECT id FROM sources WHERE url = ?'
-    ).bind(trimmedUrl).first();
+    const { results } = await c.env.DB.prepare('SELECT id, name, url FROM sources').all();
+    const existing = (results || []).find((s: any) => normalizeUrl(s.url) === cleanInputUrl);
 
     if (existing) {
       const response: ApiResponse<null> = {
         success: false,
         data: null,
-        error: 'این آدرس منبع قبلاً در سیستم ثبت شده است',
+        error: `آدرس منبع "${trimmedUrl}" قبلاً با نام "${(existing as any).name}" در سیستم ثبت شده است.`,
       };
       return c.json(response, 409);
     }
