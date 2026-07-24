@@ -371,7 +371,7 @@ export const AppDashboard: React.FC = () => {
       />
 
       {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <main className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         {/* Top Summary Metrics */}
         <StatsOverview stats={stats} loading={loadingStats} />
 

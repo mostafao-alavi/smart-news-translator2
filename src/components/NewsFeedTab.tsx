@@ -354,7 +354,7 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
       )}
 
       {/* Main Split View Container (Apple HIG Navigation Split View) */}
-      <div className="bg-white border border-gray-200/90 rounded-2xl shadow-sm overflow-hidden flex flex-col md:flex-row h-[calc(100vh-220px)] min-h-[550px]">
+      <div className="bg-white border border-gray-200/90 rounded-2xl shadow-sm overflow-hidden flex flex-col md:flex-row h-[calc(100vh-150px)] min-h-[550px]">
         {/* Column 1: Master List Pane (Sidebar) */}
         <div
           className={`${
