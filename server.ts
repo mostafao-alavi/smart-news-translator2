@@ -12,6 +12,8 @@ const __dirname = path.dirname(__filename);
 const PORT = 3000;
 
 // Initialize Express App
+import { extractFullArticleText } from './src/cron/scraper';
+
 const app = express();
 app.use(express.json());
 
@@ -101,135 +103,8 @@ let nextTranslationId = 1;
 let nextLogId = 1;
 let nextEventId = 1;
 let nextHistoryId = 1;
+function seedInitialData() {}
 
-function seedInitialData() {
-  if (sources.length === 0) {
-    sources = [
-      { id: 1, name: 'BBC World News', url: 'http://feeds.bbci.co.uk/news/world/rss.xml', language: 'en' },
-      { id: 2, name: 'TechCrunch', url: 'https://techcrunch.com/feed/', language: 'en' },
-      { id: 3, name: 'Hacker News', url: 'https://news.ycombinator.com/rss', language: 'en' },
-    ];
-    nextSourceId = 4;
-  }
-
-  articles = [
-    {
-      id: 1,
-      source_id: 1,
-      original_url: 'https://www.bbc.com/news/articles/c0491823901',
-      title: 'Global Energy Transition Accelerates with Solar and Wind Innovations',
-      content: 'Renewable energy adoption has reached a new record high this quarter according to international energy reports.',
-      published_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-      created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-      translation_status: 'completed',
-    },
-    {
-      id: 2,
-      source_id: 2,
-      original_url: 'https://techcrunch.com/2026/07/23/edge-ai-breakthroughs/',
-      title: 'Next Generation Edge AI Hardware Reduces Latency for Real-Time Processing',
-      content: 'New microprocessors enable neural net inference directly on lightweight edge hardware without cloud roundtrips.',
-      published_at: new Date(Date.now() - 3600000 * 4).toISOString(),
-      created_at: new Date(Date.now() - 3600000 * 4).toISOString(),
-      translation_status: 'completed',
-    },
-    {
-      id: 3,
-      source_id: 3,
-      original_url: 'https://news.ycombinator.com/item?id=4910284',
-      title: 'Cloudflare Workers Releases D1 Native Query Performance Enhancements',
-      content: 'Serverless SQLite databases on the edge now feature improved indexing speed and multi-region read replicas.',
-      published_at: new Date(Date.now() - 3600000 * 6).toISOString(),
-      created_at: new Date(Date.now() - 3600000 * 6).toISOString(),
-      translation_status: 'pending',
-    },
-  ];
-  nextArticleId = 4;
-
-  translations = [
-    {
-      id: 1,
-      article_id: 1,
-      target_language: 'persian',
-      translated_title: 'شتاب‌گیری گذار جهانی انرژی با نوآوری‌های خورشیدی و بادی',
-      translated_content: 'بر اساس گزارش‌های بین‌المللی انرژی، پذیرش انرژی‌های تجدیدپذیر در این سه ماهه به حد نصاب جدیدی رسیده است.',
-      translated_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-      model_used: '@cf/meta/m2m100-1.2b',
-    },
-    {
-      id: 2,
-      article_id: 2,
-      target_language: 'persian',
-      translated_title: 'پیشرفت سخت‌افزارهای هوش مصنوعی لبه نسل جدید برای پردازش آنی',
-      translated_content: 'میکروپردازنده‌های جدید استنتاج شبکه‌های عصبی را مستقیماً روی سخت‌افزارهای سبک لبه و بدون نیاز به سرورهای ابری ممکن می‌سازند.',
-      translated_at: new Date(Date.now() - 3600000 * 4).toISOString(),
-      model_used: 'gemini-2.5-flash',
-    },
-  ];
-  nextTranslationId = 3;
-
-  translationHistory = [
-    {
-      id: 1,
-      article_id: 1,
-      target_language: 'persian',
-      translated_title: 'شتاب‌گیری گذار جهانی انرژی با نوآوری‌های خورشیدی و بادی',
-      translated_content: 'بر اساس گزارش‌های بین‌المللی انرژی، پذیرش انرژی‌های تجدیدپذیر در این سه ماهه به حد نصاب جدیدی رسیده است.',
-      translated_at: new Date(Date.now() - 3600000 * 2).toISOString(),
-      model_used: '@cf/meta/m2m100-1.2b',
-    },
-    {
-      id: 2,
-      article_id: 2,
-      target_language: 'persian',
-      translated_title: 'پیشرفت سخت‌افزارهای هوش مصنوعی لبه نسل جدید برای پردازش آنی',
-      translated_content: 'میکروپردازنده‌های جدید استنتاج شبکه‌های عصبی را مستقیماً روی سخت‌افزارهای سبک لبه و بدون نیاز به سرورهای ابری ممکن می‌سازند.',
-      translated_at: new Date(Date.now() - 3600000 * 4).toISOString(),
-      model_used: 'gemini-2.5-flash',
-    },
-  ];
-  nextHistoryId = 3;
-
-  executionLogs = [
-    {
-      id: 1,
-      task_type: 'cron_scraper',
-      status: 'success',
-      items_processed: 3,
-      items_success: 3,
-      error_message: null,
-      duration_ms: 1240,
-      executed_at: new Date(Date.now() - 3600000 * 6).toISOString(),
-    },
-    {
-      id: 2,
-      task_type: 'cron_translator',
-      status: 'success',
-      items_processed: 2,
-      items_success: 2,
-      error_message: null,
-      duration_ms: 850,
-      executed_at: new Date(Date.now() - 3600000 * 4).toISOString(),
-    },
-  ];
-  nextLogId = 3;
-
-  systemEvents = [
-    {
-      id: 1,
-      event_type: 'SYSTEM_BOOT',
-      description: 'راه‌اندازی موفق موتور ورکر Cloudflare و دیتابیس D1',
-      created_at: new Date(Date.now() - 3600000 * 12).toISOString(),
-    },
-    {
-      id: 2,
-      event_type: 'INITIAL_SEED',
-      description: 'بارگذاری اولیه منابع RSS و مقالات نمونه در D1',
-      created_at: new Date(Date.now() - 3600000 * 12).toISOString(),
-    },
-  ];
-  nextEventId = 3;
-}
 
 seedInitialData();
 
@@ -292,39 +167,28 @@ function selectTranslationModel(targetLang: string) {
 
 // AI Helper for live translation with multi-model routing
 async function translateTextToPersian(text: string, targetLang: string = 'persian'): Promise<{ translatedText: string; modelUsed: string }> {
-  const route = selectTranslationModel(targetLang);
   const apiKey = process.env.GEMINI_API_KEY;
-
-  if (apiKey) {
-    try {
-      const ai = new GoogleGenAI({ apiKey });
-      const prompt = `You are a professional translator into ${targetLang}. Selected Workers AI model target: ${route.model}. Translate the following text cleanly and accurately into fluent ${targetLang}. Output ONLY the translated text without explanations or quotes:\n\n${text}`;
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-      });
-      const translated = response.text?.trim();
-      if (translated) return { translatedText: translated, modelUsed: route.model };
-    } catch (e) {
-      console.error('Gemini translation error, using fallback:', e);
-    }
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY environment variable is required for real translation');
   }
-
-  // Smart fallback translation emulator if GEMINI_API_KEY is not set
-  const fallbackText = `[ترجمه ${targetLang}]: ${text
-    .replace(/Global/gi, 'جهانی')
-    .replace(/Energy/gi, 'انرژی')
-    .replace(/AI/gi, 'هوش مصنوعی')
-    .replace(/New/gi, 'جدید')
-    .replace(/Technology/gi, 'فناوری')
-    .replace(/Cloud/gi, 'ابر')
-    .replace(/System/gi, 'سیستم')
-    .replace(/News/gi, 'اخبار')}`;
-
-  return {
-    translatedText: fallbackText,
-    modelUsed: route.model,
-  };
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const prompt = `You are a professional translator into ${targetLang}. Translate the following text cleanly, naturally, and accurately into fluent ${targetLang} (Farsi/Persian). Output ONLY the translated text without any explanation, intro, or quotation marks:\n\n${text}`;
+    
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+    });
+    
+    const translated = response.text?.trim();
+    if (translated) {
+      return { translatedText: translated, modelUsed: 'gemini-2.5-flash' };
+    }
+    throw new Error('Empty response from translation model');
+  } catch (e: any) {
+    console.error('Gemini translation error:', e);
+    throw new Error('Failed to translate text: ' + e.message);
+  }
 }
 
 // ==================== API ROUTE HANDLERS ====================
@@ -728,12 +592,25 @@ app.post('/api/trigger-scraper', async (req, res) => {
             const link = linkMatch ? (linkMatch[1] || linkMatch[2] || '').trim() : `https://news.example.com/${Date.now()}`;
 
             if (title && !articles.some((a) => a.original_url === link)) {
+              let fullContent = title;
+              
+              if (link.startsWith('http')) {
+                try {
+                  const extracted = await extractFullArticleText(link, source.selector);
+                  if (extracted) {
+                    fullContent = extracted;
+                  }
+                } catch (e) {
+                  // ignore
+                }
+              }
+
               articles.unshift({
                 id: nextArticleId++,
                 source_id: source.id,
                 original_url: link,
                 title,
-                content: title,
+                content: fullContent,
                 published_at: new Date().toISOString(),
                 created_at: new Date().toISOString(),
                 translation_status: 'pending',
@@ -743,22 +620,7 @@ app.post('/api/trigger-scraper', async (req, res) => {
           }
         }
       } catch (err: any) {
-        // Fallback demo article insertion if network fetch fails in dev sandbox
-        const demoTitle = `Latest update from ${source.name}: Breakthrough Innovations in Cloud Edge AI`;
-        const demoLink = `${source.url}#item-${Date.now()}`;
-        if (!articles.some((a) => a.title === demoTitle)) {
-          articles.unshift({
-            id: nextArticleId++,
-            source_id: source.id,
-            original_url: demoLink,
-            title: demoTitle,
-            content: `${demoTitle}. Real-time analytics and neural engine models deployed worldwide.`,
-            published_at: new Date().toISOString(),
-            created_at: new Date().toISOString(),
-            translation_status: 'pending',
-          });
-          newlyInserted++;
-        }
+        logs.push(`[Scraper] Failed to fetch feed for ${source.name}: ${err.message}`);
       }
     }
 
@@ -991,6 +853,32 @@ app.post('/api/news/custom', async (req, res) => {
   }
 });
 
+// POST /api/translate - Live Translate Custom Text
+app.post('/api/translate', async (req, res) => {
+  try {
+    const { text, input, targetLang } = req.body || {};
+    const inputText = (text || input || '').trim();
+
+    if (!inputText) {
+      return res.status(400).json({ success: false, data: null, error: 'متنی برای ترجمه وارد نشده است' });
+    }
+
+    const result = await translateTextToPersian(inputText, targetLang || 'persian');
+
+    res.json({
+      success: true,
+      data: {
+        originalText: inputText,
+        translatedText: result.translatedText,
+        modelUsed: result.modelUsed,
+      },
+      error: null,
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, data: null, error: err.message });
+  }
+});
+
 // POST /api/sources/test-feed (Test Live RSS Feed Connection)
 app.post('/api/sources/test-feed', async (req, res) => {
   try {
@@ -1073,12 +961,25 @@ app.post('/api/sources/:id/scrape', async (req, res) => {
           const link = linkMatch ? (linkMatch[1] || linkMatch[2] || '').trim() : `https://news.example.com/${Date.now()}`;
 
           if (title && !articles.some((a) => a.original_url === link)) {
+            let fullContent = title;
+              
+            if (link.startsWith('http')) {
+              try {
+                const extracted = await extractFullArticleText(link, source.selector);
+                if (extracted) {
+                  fullContent = extracted;
+                }
+              } catch (e) {
+                // ignore
+              }
+            }
+
             articles.unshift({
               id: nextArticleId++,
               source_id: source.id,
               original_url: link,
               title,
-              content: title,
+              content: fullContent,
               published_at: new Date().toISOString(),
               created_at: new Date().toISOString(),
               translation_status: 'pending',
@@ -1087,20 +988,8 @@ app.post('/api/sources/:id/scrape', async (req, res) => {
           }
         }
       }
-    } catch (e) {
-      // Fallback
-      const demoTitle = `On-Demand Fetch (${source.name}): New Developments in Cloud Edge Solutions`;
-      articles.unshift({
-        id: nextArticleId++,
-        source_id: source.id,
-        original_url: `${source.url}#instant-${Date.now()}`,
-        title: demoTitle,
-        content: demoTitle,
-        published_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-        translation_status: 'pending',
-      });
-      newlyInserted++;
+    } catch (e: any) {
+      return res.status(500).json({ success: false, data: null, error: e.message });
     }
 
     res.json({

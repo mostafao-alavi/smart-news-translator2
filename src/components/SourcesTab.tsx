@@ -367,7 +367,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3 bg-white/15 backdrop-blur-md px-4 py-3 rounded-xl border border-white/20 text-xs shrink-0 font-medium self-start md:self-auto shadow-xs">
+        <div className="flex items-center gap-2 bg-white/15 backdrop-blur-md px-4 py-3 rounded-xl border border-white/20 text-xs shrink-0 font-medium self-start md:self-auto shadow-xs">
           <Rss className="w-4 h-4 text-amber-200 shrink-0" />
           <div className="flex items-center gap-2">
             <span>منابع کل: <strong>{sources.length}</strong></span>
@@ -383,12 +383,12 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 items-start">
         {/* Form Column: Add Standardized Source */}
         <div className="lg:col-span-1 bg-white border border-gray-200/90 rounded-2xl p-5 sm:p-6 space-y-5 shadow-xs h-fit">
-          <div className="flex items-center space-x-3 space-x-reverse border-b border-gray-100 pb-4">
+          <div className="flex items-center gap-2  border-b border-gray-100 pb-4">
             <div className="bg-orange-50 text-orange-600 p-2.5 rounded-xl border border-orange-100/80 shrink-0">
               <Plus className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-gray-900">افزودن منبع خبری جدید</h3>
+              <h3 className="text-sm font-bold text-gray-900">افزودن منبع</h3>
               <p className="text-xs text-gray-500 mt-0.5">ثبت پارامترهای استخراج و تنظیمات فید</p>
             </div>
           </div>
@@ -422,7 +422,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
 
             {/* RSS URL & Test Feed Button Group */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center gap-2 justify-between mb-1.5">
                 <label className="block text-xs font-bold text-gray-700">آدرس فید (RSS / Atom)</label>
                 <button
                   type="button"
@@ -449,7 +449,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                   type="button"
                   onClick={handleTestFeedClick}
                   disabled={isTestingFeed || !url.trim()}
-                  className="w-full bg-sky-50 hover:bg-sky-100/90 text-sky-700 border border-sky-200 text-xs py-2.5 px-3 rounded-xl font-medium transition-all flex items-center justify-center gap-2 min-h-[44px] sm:min-h-[38px] active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none"
+                  className="w-full bg-sky-50 hover:bg-sky-100/90 text-sky-700 border border-sky-200 text-xs py-2.5 px-3 rounded-xl font-medium transition-all flex items-center gap-2 justify-center gap-2 min-h-[44px] sm:min-h-[38px] active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none"
                 >
                   <SearchCheck className={`w-4 h-4 ${isTestingFeed ? 'animate-spin' : ''}`} />
                   <span>{isTestingFeed ? 'در حال بررسی اتصال فید...' : 'بررسی زنده سلامت فید RSS'}</span>
@@ -466,7 +466,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                 >
                   {testResult.isValid ? (
                     <div className="space-y-1">
-                      <p className="font-bold flex items-center gap-1.5 text-emerald-700">
+                      <p className="font-bold flex items-center gap-2.5 text-emerald-700">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
                         فید معتبر و قابل اتصال است
                       </p>
@@ -475,7 +475,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                     </div>
                   ) : (
                     <div className="space-y-1">
-                      <p className="font-bold flex items-center gap-1.5 text-rose-700">
+                      <p className="font-bold flex items-center gap-2.5 text-rose-700">
                         <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
                         اتصال به فید ناموفق بود
                       </p>
@@ -505,7 +505,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1.5">دسته‌بندی موضوعی</label>
+                <label className="block text-xs font-bold text-gray-700 mb-1.5">دسته‌بندی</label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
@@ -523,7 +523,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
             {/* Scrape Limit & Active Status Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-0.5">
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                <label className="block text-xs font-bold text-gray-700 mb-1.5 flex items-center gap-2.5">
                   <ListOrdered className="w-3.5 h-3.5 text-orange-500 shrink-0" />
                   سقف اسکرپ (خبر)
                 </label>
@@ -542,14 +542,14 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1.5 flex items-center gap-1.5">
+                <label className="block text-xs font-bold text-gray-700 mb-1.5 flex items-center gap-2.5">
                   <Power className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                   وضعیت اولیه
                 </label>
                 <button
                   type="button"
                   onClick={() => setIsActiveForm(!isActiveForm)}
-                  className={`w-full py-2.5 px-3 rounded-xl border text-xs font-medium flex items-center justify-center gap-2 min-h-[44px] sm:min-h-[40px] transition-all active:scale-[0.99] ${
+                  className={`w-full py-2.5 px-3 rounded-xl border text-xs font-medium flex items-center gap-2 justify-center gap-2 min-h-[44px] sm:min-h-[40px] transition-all active:scale-[0.99] ${
                     isActiveForm
                       ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
                       : 'bg-amber-50 border-amber-300 text-amber-800'
@@ -572,8 +572,8 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
 
             {/* Selector (Optional) */}
             <div>
-              <label className="block text-xs font-bold text-gray-700 mb-1.5 flex items-center justify-between">
-                <span className="flex items-center gap-1.5">
+              <label className="block text-xs font-bold text-gray-700 mb-1.5 flex items-center gap-2 justify-between">
+                <span className="flex items-center gap-2.5">
                   <Code2 className="w-3.5 h-3.5 text-gray-500 shrink-0" />
                   سلکتور CSS استخراج
                 </span>
@@ -592,7 +592,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full bg-orange-500 hover:bg-orange-600 active:scale-[0.99] text-white font-bold text-xs sm:text-sm py-3 px-4 rounded-xl transition-all flex items-center justify-center space-x-2 space-x-reverse disabled:opacity-50 shadow-xs min-h-[44px] mt-2"
+              className="w-full bg-orange-500 hover:bg-orange-600 active:scale-[0.99] text-white font-bold text-xs sm:text-sm py-3 px-4 rounded-xl transition-all flex items-center gap-2 justify-center  disabled:opacity-50 shadow-xs min-h-[44px] mt-2"
             >
               <Plus className="w-4 h-4 shrink-0" />
               <span>{isSubmitting ? 'در حال ثبت...' : 'ثبت و فعال‌سازی منبع خبری'}</span>
@@ -601,8 +601,8 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
 
           {/* Preset Standard Sources (Enhanced Category Filter & Instant Add UI) */}
           <div className="pt-5 border-t border-gray-100 space-y-3.5">
-            <div className="flex items-center justify-between">
-              <p className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+            <div className="flex items-center gap-2 justify-between">
+              <p className="text-xs font-bold text-gray-900 flex items-center gap-2.5">
                 <Sparkles className="w-4 h-4 text-orange-500 shrink-0" />
                 <span>فیدهای پیشنهادی آماده ({presetSources.length} منبع معتبر):</span>
               </p>
@@ -610,7 +610,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
             </div>
 
             {/* Category Pills Slider */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-none text-[11px]">
+            <div className="flex items-center gap-2.5 overflow-x-auto pb-1.5 scrollbar-none text-[11px]">
               {presetCategories.map((cat) => (
                 <button
                   key={cat.id}
@@ -640,7 +640,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                 <button
                   type="button"
                   onClick={() => setPresetSearch('')}
-                  className="absolute left-2.5 top-2 text-gray-400 hover:text-gray-600 text-xs"
+                  className="absolute start-2.5 top-2 text-gray-400 hover:text-gray-600 text-xs"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -648,7 +648,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
             </div>
 
             {/* Preset List Container */}
-            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+            <div className="space-y-2 max-h-64 overflow-y-auto pe-1">
               {filteredPresetSources.length === 0 ? (
                 <div className="py-6 text-center text-xs text-gray-400">
                   هیچ فید پیشنهادی با این مشخصات یافت نشد.
@@ -666,8 +666,8 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                       key={idx}
                       className="bg-gray-50/90 hover:bg-white border border-gray-200/80 hover:border-orange-300 p-2.5 rounded-xl text-xs text-gray-800 space-y-2 transition-all shadow-2xs group"
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1.5 min-w-0">
+                      <div className="flex items-center gap-2 justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <span className="font-bold text-gray-900 truncate">{preset.name}</span>
                           <span className="text-[9px] font-bold text-sky-800 bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200 shrink-0">
                             {preset.label}
@@ -675,17 +675,17 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                         </div>
 
                         {isAlreadyAdded && (
-                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 shrink-0 flex items-center gap-1">
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 shrink-0 flex items-center gap-2">
                             <Check className="w-3 h-3 text-emerald-600" />
                             افزوده شده
                           </span>
                         )}
                       </div>
 
-                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-gray-100 text-[10px] text-gray-500 font-mono">
+                      <div className="flex items-center gap-2 justify-between gap-2 pt-1 border-t border-gray-100 text-[10px] text-gray-500 font-mono">
                         <span className="truncate ltr text-left max-w-[150px]">{preset.url}</span>
 
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex items-center gap-2.5 shrink-0">
                           {/* Populate Form Button */}
                           <button
                             type="button"
@@ -701,7 +701,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                             type="button"
                             disabled={isAlreadyAdded || isAddingThis}
                             onClick={() => handleInstantAddPreset(preset)}
-                            className={`px-2.5 py-1 rounded-lg font-sans font-bold transition-all flex items-center gap-1 ${
+                            className={`px-2.5 py-1 rounded-lg font-sans font-bold transition-all flex items-center gap-2 ${
                               isAlreadyAdded
                                 ? 'bg-gray-100 text-gray-400 border border-gray-200 cursor-not-allowed'
                                 : 'bg-orange-500 hover:bg-orange-600 text-white shadow-2xs'
@@ -758,7 +758,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
               </div>
 
               {/* Status Filter Tabs */}
-              <div className="flex items-center gap-1 bg-gray-100/80 p-1 rounded-xl self-start sm:self-auto w-full sm:w-auto justify-between sm:justify-start">
+              <div className="flex items-center gap-2 bg-gray-100/80 p-1 rounded-xl self-start sm:self-auto w-full sm:w-auto justify-between sm:justify-start">
                 <button
                   onClick={() => setStatusFilter('all')}
                   className={`text-xs px-3 py-1.5 rounded-lg font-bold transition-all min-h-[36px] flex-1 sm:flex-none text-center ${
@@ -828,7 +828,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                 <button
                   onClick={() => handleBulkToggle(true)}
                   disabled={isBulkToggling}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 min-h-[38px] flex-1 sm:flex-none"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-2 rounded-xl font-bold flex items-center gap-2 justify-center gap-1.5 transition-all disabled:opacity-50 min-h-[38px] flex-1 sm:flex-none"
                   title="فعال‌سازی یک‌جای تمام منابع انتخاب‌شده"
                 >
                   <PlayCircle className="w-4 h-4 shrink-0" />
@@ -839,7 +839,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                 <button
                   onClick={() => handleBulkToggle(false)}
                   disabled={isBulkToggling}
-                  className="bg-amber-600 hover:bg-amber-700 text-white text-xs px-3 py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 min-h-[38px] flex-1 sm:flex-none"
+                  className="bg-amber-600 hover:bg-amber-700 text-white text-xs px-3 py-2 rounded-xl font-bold flex items-center gap-2 justify-center gap-1.5 transition-all disabled:opacity-50 min-h-[38px] flex-1 sm:flex-none"
                   title="غیرفعال‌سازی موقت تمام منابع انتخاب‌شده"
                 >
                   <PauseCircle className="w-4 h-4 shrink-0" />
@@ -850,7 +850,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                 <button
                   onClick={() => setShowConfirmBulkDelete(true)}
                   disabled={isBulkDeleting}
-                  className="bg-rose-600 hover:bg-rose-700 text-white text-xs px-3 py-2 rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all shadow-2xs disabled:opacity-50 min-h-[38px] flex-1 sm:flex-none"
+                  className="bg-rose-600 hover:bg-rose-700 text-white text-xs px-3 py-2 rounded-xl font-bold flex items-center gap-2 justify-center gap-1.5 transition-all shadow-2xs disabled:opacity-50 min-h-[38px] flex-1 sm:flex-none"
                 >
                   <Trash2 className="w-4 h-4 shrink-0" />
                   <span>حذف یک‌جا ({selectedIds.length})</span>
@@ -876,7 +876,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
               <p className="text-xs text-rose-700 leading-relaxed">
                 آیا مطمئن هستید که می‌خواهید تمام <strong>{selectedIds.length} منبع انتخاب شده</strong> را به صورت دائم از دیتابیس D1 حذف کنید؟ این عملیات غیرقابل بازگشت است.
               </p>
-              <div className="flex items-center justify-end gap-2.5 pt-1">
+              <div className="flex items-center gap-2 justify-end gap-2.5 pt-1">
                 <button
                   onClick={() => setShowConfirmBulkDelete(false)}
                   className="bg-white text-gray-700 border border-gray-300 hover:bg-gray-100 text-xs px-3.5 py-2 rounded-xl font-medium min-h-[38px]"
@@ -886,7 +886,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                 <button
                   onClick={handleConfirmBulkDelete}
                   disabled={isBulkDeleting}
-                  className="bg-rose-600 hover:bg-rose-700 text-white text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-1.5 min-h-[38px]"
+                  className="bg-rose-600 hover:bg-rose-700 text-white text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-2.5 min-h-[38px]"
                 >
                   <Trash2 className="w-4 h-4" />
                   <span>{isBulkDeleting ? 'در حال حذف...' : 'تایید و حذف دائم یک‌جا'}</span>
@@ -925,7 +925,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                   >
                     {/* Header Row */}
                     <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3.5">
-                      <div className="flex items-start space-x-3 space-x-reverse min-w-0">
+                      <div className="flex items-start gap-2  min-w-0">
                         {/* Checkbox with Touch Padding */}
                         <button
                           onClick={() => handleToggleSelect(src.id)}
@@ -940,14 +940,14 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                         </button>
 
                         <div className="space-y-1.5 min-w-0">
-                          <div className="flex items-center flex-wrap gap-2">
+                          <div className="flex items-center gap-2 flex-wrap gap-2">
                             <Rss className={`w-4 h-4 shrink-0 ${isActive ? 'text-orange-500' : 'text-amber-500'}`} />
                             <h4 className="text-sm sm:text-base font-bold text-gray-900 leading-snug">{src.name}</h4>
 
                             {/* Active/Inactive Badge Button */}
                             <button
                               onClick={() => handleToggleSingleStatus(src)}
-                              className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1.5 transition-colors ${
+                              className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-2.5 transition-colors ${
                                 isActive
                                   ? 'bg-emerald-100 text-emerald-800 border border-emerald-200 hover:bg-emerald-200'
                                   : 'bg-amber-100 text-amber-800 border border-amber-200 hover:bg-amber-200'
@@ -976,13 +976,13 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                       </div>
 
                       {/* Right Control Buttons */}
-                      <div className="flex items-center space-x-2 space-x-reverse shrink-0 self-stretch sm:self-auto justify-end pt-1 sm:pt-0 border-t sm:border-0 border-gray-100">
+                      <div className="flex items-center gap-2  shrink-0 self-stretch sm:self-auto justify-end pt-1 sm:pt-0 border-t sm:border-0 border-gray-100">
                         {/* Quick Scrape Button */}
                         <button
                           onClick={() => onScrapeSource(src.id)}
                           disabled={!isActive}
                           title={isActive ? 'اسکرپ آنی این منبع' : 'منبع غیرفعال است'}
-                          className="bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs px-3 py-2 rounded-xl font-medium flex items-center justify-center gap-1.5 min-h-[38px] transition-all disabled:opacity-40"
+                          className="bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs px-3 py-2 rounded-xl font-medium flex items-center gap-2 justify-center gap-1.5 min-h-[38px] transition-all disabled:opacity-40"
                         >
                           <RefreshCw className="w-3.5 h-3.5 text-sky-600 shrink-0" />
                           <span>پایش آنی</span>
@@ -992,7 +992,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                         <button
                           onClick={() => (isEditing ? setEditingSourceId(null) : handleStartEdit(src))}
                           title="تنظیم سقف اسکرپ و پارامترها"
-                          className={`text-xs px-3 py-2 rounded-xl font-medium flex items-center justify-center gap-1.5 border min-h-[38px] transition-all ${
+                          className={`text-xs px-3 py-2 rounded-xl font-medium flex items-center gap-2 justify-center gap-1.5 border min-h-[38px] transition-all ${
                             isEditing
                               ? 'bg-orange-50 text-orange-700 border-orange-300'
                               : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
@@ -1007,7 +1007,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                           href={src.url}
                           target="_blank"
                           rel="noreferrer"
-                          className="bg-white hover:bg-gray-100 text-gray-700 border border-gray-200 p-2 rounded-xl text-xs flex items-center justify-center min-h-[38px] min-w-[38px] transition-colors"
+                          className="bg-white hover:bg-gray-100 text-gray-700 border border-gray-200 p-2 rounded-xl text-xs flex items-center gap-2 justify-center min-h-[38px] min-w-[38px] transition-colors"
                           title="باز کردن مستقیم آدرس فید"
                         >
                           <ExternalLink className="w-3.5 h-3.5" />
@@ -1017,7 +1017,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                         <button
                           onClick={() => onDeleteSource(src.id)}
                           title="حذف این منبع"
-                          className="text-gray-400 hover:text-rose-600 hover:bg-rose-50 p-2 rounded-xl border border-transparent hover:border-rose-200 transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center"
+                          className="text-gray-400 hover:text-rose-600 hover:bg-rose-50 p-2 rounded-xl border border-transparent hover:border-rose-200 transition-colors min-h-[38px] min-w-[38px] flex items-center gap-2 justify-center"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1026,13 +1026,13 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
 
                     {/* Metadata Badges Footer */}
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-gray-500 pt-2.5 border-t border-gray-100">
-                      <span className="flex items-center gap-1.5 bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-200/80">
+                      <span className="flex items-center gap-2.5 bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-200/80">
                         <ListOrdered className="w-3.5 h-3.5 text-orange-500 shrink-0" />
                         <span>سقف استخراج: <strong>{src.scrape_limit || 10} خبر</strong></span>
                       </span>
 
                       {src.selector && (
-                        <span className="flex items-center gap-1.5 bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-200/80 font-mono ltr">
+                        <span className="flex items-center gap-2.5 bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-200/80 font-mono ltr">
                           <Code2 className="w-3.5 h-3.5 text-gray-400 shrink-0" />
                           <span>{src.selector}</span>
                         </span>
@@ -1042,7 +1042,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                     {/* Inline Quick Edit Section */}
                     {isEditing && (
                       <div className="mt-3 p-3.5 sm:p-4 bg-orange-50/60 border border-orange-200 rounded-xl space-y-3 animate-in fade-in">
-                        <div className="flex items-center justify-between text-xs font-bold text-gray-900 border-b border-orange-200/80 pb-2">
+                        <div className="flex items-center gap-2 justify-between text-xs font-bold text-gray-900 border-b border-orange-200/80 pb-2">
                           <span>ویرایش سریع پارامترهای منبع #{src.id}</span>
                           <button
                             onClick={() => setEditingSourceId(null)}
@@ -1102,7 +1102,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-end gap-2 pt-1.5">
+                        <div className="flex items-center gap-2 justify-end gap-2 pt-1.5">
                           <button
                             onClick={() => setEditingSourceId(null)}
                             className="bg-white border border-gray-300 text-gray-700 text-xs px-3 py-1.5 rounded-lg font-medium min-h-[36px]"
@@ -1112,7 +1112,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                           <button
                             onClick={() => handleSaveEdit(src.id)}
                             disabled={isSavingEdit}
-                            className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-3.5 py-1.5 rounded-lg font-bold flex items-center gap-1.5 min-h-[36px] disabled:opacity-50"
+                            className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-3.5 py-1.5 rounded-lg font-bold flex items-center gap-2.5 min-h-[36px] disabled:opacity-50"
                           >
                             <Check className="w-3.5 h-3.5" />
                             <span>{isSavingEdit ? 'در حال ذخیره...' : 'ذخیره تغییرات'}</span>

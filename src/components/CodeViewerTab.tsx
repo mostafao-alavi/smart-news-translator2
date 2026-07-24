@@ -134,7 +134,7 @@ INSERT OR IGNORE INTO sources (name, url, language) VALUES
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           {/* Subtab Toggle */}
-          <div className="flex items-center space-x-1 space-x-reverse bg-gray-100 p-1 rounded-lg border border-gray-200">
+          <div className="flex items-center gap-2  bg-gray-100 p-1 rounded-lg border border-gray-200">
             <button
               onClick={() => setActiveSubTab('code')}
               className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
@@ -163,7 +163,7 @@ INSERT OR IGNORE INTO sources (name, url, language) VALUES
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {/* File Selection Sidebar */}
           <div className="md:col-span-1 bg-white border border-gray-200 rounded-xl p-3 space-y-1 shadow-xs h-fit">
-            <div className="text-xs font-semibold text-gray-500 px-3 py-2 border-b border-gray-100 mb-2 flex items-center gap-1.5">
+            <div className="text-xs font-semibold text-gray-500 px-3 py-2 border-b border-gray-100 mb-2 flex items-center gap-2.5">
               <FileCode className="w-4 h-4 text-orange-500" />
               <span>فایل‌های ورکر (۶ فایل):</span>
             </div>
@@ -181,7 +181,7 @@ INSERT OR IGNORE INTO sources (name, url, language) VALUES
                 <button
                   key={item.name}
                   onClick={() => handleFetchCode(item.name)}
-                  className={`w-full text-right px-3 py-2.5 rounded-lg text-xs font-mono transition-all flex items-center justify-between ${
+                  className={`w-full text-start px-3 py-2.5 rounded-lg text-xs font-mono transition-all flex items-center gap-2 justify-between ${
                     isSelected
                       ? 'bg-orange-50 text-orange-700 border border-orange-200 font-bold'
                       : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -196,8 +196,8 @@ INSERT OR IGNORE INTO sources (name, url, language) VALUES
 
           {/* Code Viewer Panel */}
           <div className="md:col-span-3 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-md flex flex-col">
-            <div className="bg-gray-800 px-4 py-3 border-b border-gray-700 flex items-center justify-between">
-              <div className="flex items-center space-x-2 space-x-reverse">
+            <div className="bg-gray-800 px-4 py-3 border-b border-gray-700 flex items-center gap-2 justify-between">
+              <div className="flex items-center gap-2 ">
                 <FileCode className="w-4 h-4 text-sky-400" />
                 <span className="text-xs font-bold text-gray-200 font-mono">
                   {selectedFilename}
@@ -211,7 +211,7 @@ INSERT OR IGNORE INTO sources (name, url, language) VALUES
                     fileContents[selectedFilename] || '// Code loaded'
                   )
                 }
-                className="bg-gray-700 hover:bg-gray-600 text-gray-100 border border-gray-600 text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+                className="bg-gray-700 hover:bg-gray-600 text-gray-100 border border-gray-600 text-xs px-3 py-1.5 rounded-lg flex items-center gap-2.5 transition-colors"
               >
                 {copiedFile === selectedFilename ? (
                   <>
@@ -238,8 +238,8 @@ INSERT OR IGNORE INTO sources (name, url, language) VALUES
       ) : (
         /* D1 SQL Schema & Deployment Commands */
         <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4 shadow-xs">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-            <div className="flex items-center space-x-2 space-x-reverse">
+          <div className="flex items-center gap-2 justify-between border-b border-gray-100 pb-3">
+            <div className="flex items-center gap-2 ">
               <Database className="w-5 h-5 text-orange-500" />
               <div>
                 <h4 className="text-sm font-bold text-gray-900">اسکیمای جداول Cloudflare D1 (schema.sql)</h4>
@@ -249,7 +249,7 @@ INSERT OR IGNORE INTO sources (name, url, language) VALUES
 
             <button
               onClick={() => handleCopyCode('schema.sql', d1SqlSchema)}
-              className="bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-xs px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5"
+              className="bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-xs px-3 py-1.5 rounded-lg font-medium flex items-center gap-2.5"
             >
               {copiedFile === 'schema.sql' ? (
                 <>
@@ -270,7 +270,7 @@ INSERT OR IGNORE INTO sources (name, url, language) VALUES
           </div>
 
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2 text-xs">
-            <span className="font-bold text-orange-600 flex items-center gap-1.5">
+            <span className="font-bold text-orange-600 flex items-center gap-2.5">
               <Terminal className="w-4 h-4" />
               دستور ایجاد دیتابیس D1 و دیپلوی در Cloudflare:
             </span>

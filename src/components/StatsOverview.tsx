@@ -11,14 +11,14 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ stats, loading }) 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       {/* Active RSS Sources */}
-      <div className="bg-white border border-gray-200/80 rounded-xl p-4 flex items-center justify-between shadow-xs hover:border-gray-300 transition-all">
+      <div className="bg-white border border-gray-200/80 rounded-xl p-4 flex items-center gap-2 justify-between shadow-xs hover:border-gray-300 transition-all">
         <div>
-          <p className="text-xs font-medium text-gray-500">منابع خبری فعال</p>
-          <div className="flex items-baseline space-x-2 space-x-reverse mt-1">
+          <p className="text-xs font-medium text-gray-500">منابع فعال</p>
+          <div className="flex items-baseline gap-2  mt-1">
             <span className="text-2xl font-bold text-gray-900 font-mono">
               {loading ? '...' : stats?.sources_count ?? 0}
             </span>
-            <span className="text-xs text-gray-400">منبع خبری</span>
+            <span className="text-xs text-gray-400">منبع</span>
           </div>
         </div>
         <div className="bg-sky-50 text-sky-600 p-2.5 rounded-lg border border-sky-100">
@@ -27,14 +27,14 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ stats, loading }) 
       </div>
 
       {/* Scraped Articles */}
-      <div className="bg-white border border-gray-200/80 rounded-xl p-4 flex items-center justify-between shadow-xs hover:border-gray-300 transition-all">
+      <div className="bg-white border border-gray-200/80 rounded-xl p-4 flex items-center gap-2 justify-between shadow-xs hover:border-gray-300 transition-all">
         <div>
-          <p className="text-xs font-medium text-gray-500">کل اخبار دریافت‌شده</p>
-          <div className="flex items-baseline space-x-2 space-x-reverse mt-1">
+          <p className="text-xs font-medium text-gray-500">کل اخبار</p>
+          <div className="flex items-baseline gap-2  mt-1">
             <span className="text-2xl font-bold text-gray-900 font-mono">
               {loading ? '...' : stats?.articles_count ?? 0}
             </span>
-            <span className="text-xs text-gray-400">خبر پایش‌شده</span>
+            <span className="text-xs text-gray-400">خبر</span>
           </div>
         </div>
         <div className="bg-amber-50 text-amber-600 p-2.5 rounded-lg border border-amber-100">
@@ -43,10 +43,10 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ stats, loading }) 
       </div>
 
       {/* Persian Translations */}
-      <div className="bg-white border border-gray-200/80 rounded-xl p-4 flex items-center justify-between shadow-xs hover:border-gray-300 transition-all">
+      <div className="bg-white border border-gray-200/80 rounded-xl p-4 flex items-center gap-2 justify-between shadow-xs hover:border-gray-300 transition-all">
         <div>
-          <p className="text-xs font-medium text-gray-500">ترجمه‌های هوشمند انجام‌شده</p>
-          <div className="flex items-baseline space-x-2 space-x-reverse mt-1">
+          <p className="text-xs font-medium text-gray-500">ترجمه‌های موفق</p>
+          <div className="flex items-baseline gap-2  mt-1">
             <span className="text-2xl font-bold text-emerald-600 font-mono">
               {loading ? '...' : stats?.translations_count ?? 0}
             </span>
@@ -59,10 +59,10 @@ export const StatsOverview: React.FC<StatsOverviewProps> = ({ stats, loading }) 
       </div>
 
       {/* Pending Translations Queue */}
-      <div className="bg-white border border-gray-200/80 rounded-xl p-4 flex items-center justify-between shadow-xs hover:border-gray-300 transition-all">
+      <div className="bg-white border border-gray-200/80 rounded-xl p-4 flex items-center gap-2 justify-between shadow-xs hover:border-gray-300 transition-all">
         <div>
-          <p className="text-xs font-medium text-gray-500">اخبار در صف پردازش</p>
-          <div className="flex items-baseline space-x-2 space-x-reverse mt-1">
+          <p className="text-xs font-medium text-gray-500">در صف پردازش</p>
+          <div className="flex items-baseline gap-2  mt-1">
             <span className="text-2xl font-bold text-orange-600 font-mono">
               {loading ? '...' : stats?.pending_translations_count ?? 0}
             </span>

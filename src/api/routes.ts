@@ -12,96 +12,109 @@ api.use('*', cors({
 }));
 
 let tablesEnsured = false;
-export async function ensureTablesAndLogs(db: any) {
-  if (tablesEnsured || !db) return;
+export async function ensureTablesAndLogs(db: any, force: boolean = false) {
+  if (!db) return;
+  if (tablesEnsured && !force) return;
+
   try {
-    tablesEnsured = true;
-    await db.batch([
-      db.prepare(`
-        CREATE TABLE IF NOT EXISTS sources (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT NOT NULL,
-          url TEXT NOT NULL UNIQUE,
-          language TEXT DEFAULT 'en',
-          category TEXT DEFAULT 'general',
-          selector TEXT DEFAULT NULL,
-          scrape_limit INTEGER DEFAULT 10,
-          is_active INTEGER DEFAULT 1,
-          created_at TEXT DEFAULT (datetime('now'))
-        );
-      `),
-      db.prepare(`
-        CREATE TABLE IF NOT EXISTS articles (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          source_id INTEGER NOT NULL,
-          original_url TEXT NOT NULL UNIQUE,
-          title TEXT NOT NULL,
-          content TEXT NOT NULL,
-          published_at TEXT,
-          created_at TEXT DEFAULT (datetime('now')),
-          translation_status TEXT DEFAULT 'pending',
-          FOREIGN KEY (source_id) REFERENCES sources(id)
-        );
-      `),
-      db.prepare(`
-        CREATE TABLE IF NOT EXISTS translations (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          article_id INTEGER NOT NULL UNIQUE,
-          target_language TEXT DEFAULT 'persian',
-          translated_title TEXT NOT NULL,
-          translated_content TEXT NOT NULL,
-          translated_at TEXT DEFAULT (datetime('now')),
-          model_used TEXT,
-          ai_model TEXT,
-          FOREIGN KEY (article_id) REFERENCES articles(id)
-        );
-      `),
-      db.prepare(`
-        CREATE TABLE IF NOT EXISTS translation_history (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          article_id INTEGER NOT NULL,
-          target_language TEXT DEFAULT 'persian',
-          translated_title TEXT NOT NULL,
-          translated_content TEXT NOT NULL,
-          translated_at TEXT DEFAULT (datetime('now')),
-          model_used TEXT NOT NULL,
-          FOREIGN KEY (article_id) REFERENCES articles(id)
-        );
-      `),
-      db.prepare(`
-        CREATE TABLE IF NOT EXISTS execution_logs (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          task_type TEXT NOT NULL,
-          status TEXT NOT NULL,
-          items_processed INTEGER DEFAULT 0,
-          items_success INTEGER DEFAULT 0,
-          error_message TEXT,
-          duration_ms INTEGER DEFAULT 0,
-          executed_at TEXT DEFAULT (datetime('now'))
-        );
-      `),
-      db.prepare(`
-        CREATE TABLE IF NOT EXISTS system_events (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          event_type TEXT NOT NULL,
-          description TEXT NOT NULL,
-          created_at TEXT DEFAULT (datetime('now'))
-        );
-      `),
-      db.prepare('CREATE INDEX IF NOT EXISTS idx_articles_created_at ON articles(created_at DESC);'),
-      db.prepare('CREATE INDEX IF NOT EXISTS idx_articles_status ON articles(translation_status);'),
-      db.prepare('CREATE INDEX IF NOT EXISTS idx_articles_source_id ON articles(source_id);'),
-      db.prepare('CREATE INDEX IF NOT EXISTS idx_translations_model ON translations(model_used);'),
-      db.prepare('CREATE INDEX IF NOT EXISTS idx_execution_logs_time ON execution_logs(executed_at DESC);'),
-      db.prepare('CREATE INDEX IF NOT EXISTS idx_translation_history_article ON translation_history(article_id);'),
-    ]);
+    const tableSqls = [
+      `CREATE TABLE IF NOT EXISTS sources (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL UNIQUE,
+        language TEXT DEFAULT 'en',
+        category TEXT DEFAULT 'general',
+        selector TEXT DEFAULT NULL,
+        scrape_limit INTEGER DEFAULT 10,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now'))
+      );`,
+      `CREATE TABLE IF NOT EXISTS articles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id INTEGER NOT NULL,
+        original_url TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        published_at TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        translation_status TEXT DEFAULT 'pending',
+        FOREIGN KEY (source_id) REFERENCES sources(id)
+      );`,
+      `CREATE TABLE IF NOT EXISTS translations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        article_id INTEGER NOT NULL UNIQUE,
+        target_language TEXT DEFAULT 'persian',
+        translated_title TEXT NOT NULL,
+        translated_content TEXT NOT NULL,
+        translated_at TEXT DEFAULT (datetime('now')),
+        model_used TEXT,
+        ai_model TEXT,
+        FOREIGN KEY (article_id) REFERENCES articles(id)
+      );`,
+      `CREATE TABLE IF NOT EXISTS translation_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        article_id INTEGER NOT NULL,
+        target_language TEXT DEFAULT 'persian',
+        translated_title TEXT NOT NULL,
+        translated_content TEXT NOT NULL,
+        translated_at TEXT DEFAULT (datetime('now')),
+        model_used TEXT NOT NULL,
+        FOREIGN KEY (article_id) REFERENCES articles(id)
+      );`,
+      `CREATE TABLE IF NOT EXISTS execution_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        items_processed INTEGER DEFAULT 0,
+        items_success INTEGER DEFAULT 0,
+        error_message TEXT,
+        duration_ms INTEGER DEFAULT 0,
+        executed_at TEXT DEFAULT (datetime('now'))
+      );`,
+      `CREATE TABLE IF NOT EXISTS system_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_type TEXT NOT NULL,
+        description TEXT NOT NULL,
+        created_at TEXT DEFAULT (datetime('now'))
+      );`
+    ];
+
+    for (const sql of tableSqls) {
+      try { await db.prepare(sql).run(); } catch {}
+    }
 
     // Safe column migrations for existing tables
-    try { await db.prepare("ALTER TABLE sources ADD COLUMN category TEXT DEFAULT 'general'").run(); } catch {}
-    try { await db.prepare("ALTER TABLE sources ADD COLUMN selector TEXT DEFAULT NULL").run(); } catch {}
-    try { await db.prepare("ALTER TABLE sources ADD COLUMN scrape_limit INTEGER DEFAULT 10").run(); } catch {}
-    try { await db.prepare("ALTER TABLE sources ADD COLUMN is_active INTEGER DEFAULT 1").run(); } catch {}
-    try { await db.prepare("ALTER TABLE sources ADD COLUMN created_at TEXT DEFAULT (datetime('now'))").run(); } catch {}
+    const migrations = [
+      "ALTER TABLE sources ADD COLUMN category TEXT DEFAULT 'general'",
+      "ALTER TABLE sources ADD COLUMN selector TEXT DEFAULT NULL",
+      "ALTER TABLE sources ADD COLUMN scrape_limit INTEGER DEFAULT 10",
+      "ALTER TABLE sources ADD COLUMN is_active INTEGER DEFAULT 1",
+      "ALTER TABLE sources ADD COLUMN created_at TEXT DEFAULT (datetime('now'))",
+      "ALTER TABLE articles ADD COLUMN published_at TEXT",
+      "ALTER TABLE articles ADD COLUMN translation_status TEXT DEFAULT 'pending'",
+      "ALTER TABLE translations ADD COLUMN model_used TEXT",
+      "ALTER TABLE translations ADD COLUMN ai_model TEXT"
+    ];
+
+    for (const sql of migrations) {
+      try { await db.prepare(sql).run(); } catch {}
+    }
+
+    // Indexes
+    const indexes = [
+      'CREATE INDEX IF NOT EXISTS idx_articles_created_at ON articles(created_at DESC);',
+      'CREATE INDEX IF NOT EXISTS idx_articles_status ON articles(translation_status);',
+      'CREATE INDEX IF NOT EXISTS idx_articles_source_id ON articles(source_id);',
+      'CREATE INDEX IF NOT EXISTS idx_translations_model ON translations(model_used);',
+      'CREATE INDEX IF NOT EXISTS idx_execution_logs_time ON execution_logs(executed_at DESC);',
+      'CREATE INDEX IF NOT EXISTS idx_translation_history_article ON translation_history(article_id);'
+    ];
+
+    for (const sql of indexes) {
+      try { await db.prepare(sql).run(); } catch {}
+    }
+
+    tablesEnsured = true;
   } catch (err) {
     console.warn('Database table auto-initialization check:', err);
   }
@@ -319,8 +332,17 @@ api.post('/sources', async (c) => {
     const cleanInputUrl = normalizeUrl(trimmedUrl);
 
     // Check if source URL already exists
-    const { results } = await c.env.DB.prepare('SELECT id, name, url FROM sources').all();
-    const existing = (results || []).find((s: any) => normalizeUrl(s.url) === cleanInputUrl);
+    let results: any[] = [];
+    try {
+      const res = await c.env.DB.prepare('SELECT id, name, url FROM sources').all();
+      results = res.results || [];
+    } catch {
+      await ensureTablesAndLogs(c.env.DB, true);
+      const res = await c.env.DB.prepare('SELECT id, name, url FROM sources').all();
+      results = res.results || [];
+    }
+
+    const existing = results.find((s: any) => normalizeUrl(s.url) === cleanInputUrl);
 
     if (existing) {
       const response: ApiResponse<null> = {
@@ -331,10 +353,25 @@ api.post('/sources', async (c) => {
       return c.json(response, 409);
     }
 
-    // Insert new source
-    const result = await c.env.DB.prepare(
-      'INSERT INTO sources (name, url, language, category, selector, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).bind(trimmedName, trimmedUrl, lang, cat, sel, limit, active).run();
+    // Insert new source with schema repair fallback
+    let result: any;
+    try {
+      result = await c.env.DB.prepare(
+        'INSERT INTO sources (name, url, language, category, selector, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).bind(trimmedName, trimmedUrl, lang, cat, sel, limit, active).run();
+    } catch (insertErr: any) {
+      // Force schema update and retry
+      await ensureTablesAndLogs(c.env.DB, true);
+      try {
+        result = await c.env.DB.prepare(
+          'INSERT INTO sources (name, url, language, category, selector, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)'
+        ).bind(trimmedName, trimmedUrl, lang, cat, sel, limit, active).run();
+      } catch {
+        result = await c.env.DB.prepare(
+          'INSERT INTO sources (name, url, language, category) VALUES (?, ?, ?, ?)'
+        ).bind(trimmedName, trimmedUrl, lang, cat).run();
+      }
+    }
 
     const newSource: Source = {
       id: result.meta.last_row_id as number,
@@ -367,13 +404,28 @@ api.post('/sources', async (c) => {
 // GET /api/sources - List all news sources
 api.get('/sources', async (c) => {
   try {
-    const { results } = await c.env.DB.prepare(
-      'SELECT id, name, url, language, category, selector, scrape_limit, is_active, created_at FROM sources ORDER BY id ASC'
-    ).all<Source>();
+    let results: Source[] = [];
+    try {
+      const res = await c.env.DB.prepare(
+        'SELECT id, name, url, language, category, selector, scrape_limit, is_active, created_at FROM sources ORDER BY id ASC'
+      ).all<Source>();
+      results = res.results || [];
+    } catch {
+      await ensureTablesAndLogs(c.env.DB, true);
+      try {
+        const res = await c.env.DB.prepare(
+          'SELECT id, name, url, language, category, selector, scrape_limit, is_active, created_at FROM sources ORDER BY id ASC'
+        ).all<Source>();
+        results = res.results || [];
+      } catch {
+        const res = await c.env.DB.prepare('SELECT * FROM sources ORDER BY id ASC').all<Source>();
+        results = res.results || [];
+      }
+    }
 
     const response: ApiResponse<Source[]> = {
       success: true,
-      data: results || [],
+      data: results,
       error: null,
     };
     c.header('Cache-Control', 'public, max-age=15, s-maxage=60');
@@ -830,6 +882,35 @@ api.post('/news/custom', async (c) => {
   }
 });
 
+// POST /api/translate - Live translate arbitrary text
+api.post('/translate', async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({}));
+    const text = (body.text || body.input || '').trim();
+    const model = body.model || body.selectedModel || 'gemini-2.5-flash';
+    const targetLang = body.targetLang || 'persian';
+
+    if (!text) {
+      return c.json({ success: false, data: null, error: 'متنی برای ترجمه وارد نشده است' }, 400);
+    }
+
+    const { translateTextWithAI } = await import('../cron/translator');
+    const result = await translateTextWithAI(c.env, text, 'english', targetLang, model);
+
+    return c.json({
+      success: true,
+      data: {
+        originalText: text,
+        translatedText: result.translatedText,
+        modelUsed: result.modelUsed,
+      },
+      error: null,
+    });
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
 // POST /api/sources/:id/scrape - Scrape single source RSS feed
 api.post('/sources/:id/scrape', async (c) => {
   try {
@@ -961,6 +1042,8 @@ api.all('/clear-cache', async (c) => {
 // POST /api/database/reset - Full/Selective Database Reset
 api.post('/database/reset', async (c) => {
   try {
+    await ensureTablesAndLogs(c.env.DB, true);
+
     interface ResetRequestBody {
       clearSources?: boolean;
       clearArticles?: boolean;

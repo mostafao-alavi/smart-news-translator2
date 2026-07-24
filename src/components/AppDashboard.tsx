@@ -421,7 +421,7 @@ export const AppDashboard: React.FC = () => {
       {/* Footer */}
       <footer className="border-t border-gray-200 bg-white py-6 mt-12 text-center text-xs text-gray-500">
         <p>
-          پلتفرم ۱۰۰۰ دستان (1000 Dastan) • سامانه هوشمند پایش اخبار و ترجمه AI • Cloudflare Workers & D1
+          ۱۰۰۰ دستان (1000 Dastan) • سامانه هوشمند پایش اخبار و ترجمه AI • Cloudflare Workers & D1
         </p>
       </footer>
     </div>

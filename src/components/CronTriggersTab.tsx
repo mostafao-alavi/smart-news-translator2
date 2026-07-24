@@ -77,7 +77,7 @@ export const CronTriggersTab: React.FC<CronTriggersTabProps> = ({
       {/* Scheduled Job Overview Card */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4">
-          <div className="flex items-center space-x-3 space-x-reverse">
+          <div className="flex items-center gap-2 ">
             <div className="bg-orange-50 text-orange-600 p-2.5 rounded-xl border border-orange-100">
               <Clock className="w-6 h-6" />
             </div>
@@ -97,7 +97,7 @@ export const CronTriggersTab: React.FC<CronTriggersTabProps> = ({
           <button
             onClick={handleRunPipelineSequence}
             disabled={isTriggeringScraper || isTriggeringTranslator}
-            className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-4 py-2.5 rounded-lg transition-colors flex items-center justify-center space-x-2 space-x-reverse shrink-0 disabled:opacity-50 shadow-xs"
+            className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2 justify-center  shrink-0 disabled:opacity-50 shadow-xs"
           >
             <Play className="w-4 h-4 fill-current" />
             <span>اجرای کامل چرخه پایش و ترجمه</span>
@@ -108,8 +108,8 @@ export const CronTriggersTab: React.FC<CronTriggersTabProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
           {/* Card 1: Scraper Routine */}
           <div className="bg-gray-50 border border-gray-200/80 rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-sky-700 flex items-center gap-1.5">
+            <div className="flex items-center gap-2 justify-between">
+              <span className="text-xs font-bold text-sky-700 flex items-center gap-2.5">
                 <Database className="w-4 h-4" />
                 ۱. موتور دریافت و پایش اخبار
               </span>
@@ -122,11 +122,11 @@ export const CronTriggersTab: React.FC<CronTriggersTabProps> = ({
               بررسی کلیه منابع خبری فعال، استخراج آخرین مطالب منتشرشده و ثبت اخبار جدید در پایگاه داده جهت آماده‌سازی ترجمه.
             </p>
 
-            <div className="pt-2 flex items-center justify-between">
+            <div className="pt-2 flex items-center gap-2 justify-between">
               <button
                 onClick={handleRunScraper}
                 disabled={isTriggeringScraper}
-                className="bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs px-3.5 py-2 rounded-lg font-medium transition-all flex items-center space-x-1.5 space-x-reverse disabled:opacity-50 shadow-2xs"
+                className="bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs px-3.5 py-2 rounded-lg font-medium transition-all flex items-center gap-2  disabled:opacity-50 shadow-2xs"
               >
                 <RefreshCw className={`w-3.5 h-3.5 text-sky-600 ${isTriggeringScraper ? 'animate-spin' : ''}`} />
                 <span>{isTriggeringScraper ? 'در حال پایش اخبار...' : 'اجرای دستی پایش اخبار'}</span>
@@ -142,8 +142,8 @@ export const CronTriggersTab: React.FC<CronTriggersTabProps> = ({
 
           {/* Card 2: Translator Routine */}
           <div className="bg-gray-50 border border-gray-200/80 rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-orange-700 flex items-center gap-1.5">
+            <div className="flex items-center gap-2 justify-between">
+              <span className="text-xs font-bold text-orange-700 flex items-center gap-2.5">
                 <Cpu className="w-4 h-4" />
                 ۲. موتور ترجمه زبانی هوش مصنوعی
               </span>
@@ -156,11 +156,11 @@ export const CronTriggersTab: React.FC<CronTriggersTabProps> = ({
               انتخاب اخبار در صف انتظار، پردازش زبانی متون توسط شبکه‌های عصبی عمیق و تولید نسخه ترجمه‌شده فارسی.
             </p>
 
-            <div className="pt-2 flex items-center justify-between">
+            <div className="pt-2 flex items-center gap-2 justify-between">
               <button
                 onClick={handleRunTranslator}
                 disabled={isTriggeringTranslator}
-                className="bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-xs px-3.5 py-2 rounded-lg font-medium transition-all flex items-center space-x-1.5 space-x-reverse disabled:opacity-50 shadow-2xs"
+                className="bg-orange-50 hover:bg-orange-100 text-orange-700 border border-orange-200 text-xs px-3.5 py-2 rounded-lg font-medium transition-all flex items-center gap-2  disabled:opacity-50 shadow-2xs"
               >
                 <Sparkles className={`w-3.5 h-3.5 text-orange-600 ${isTriggeringTranslator ? 'animate-pulse' : ''}`} />
                 <span>{isTriggeringTranslator ? 'در حال ترجمه اخبار...' : 'اجرای دستی ترجمه اخبار'}</span>
@@ -178,8 +178,8 @@ export const CronTriggersTab: React.FC<CronTriggersTabProps> = ({
 
       {/* Terminal Output Logs */}
       <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-md">
-        <div className="bg-gray-800/90 px-4 py-2.5 border-b border-gray-700 flex items-center justify-between">
-          <div className="flex items-center space-x-2 space-x-reverse">
+        <div className="bg-gray-800/90 px-4 py-2.5 border-b border-gray-700 flex items-center gap-2 justify-between">
+          <div className="flex items-center gap-2 ">
             <Terminal className="w-4 h-4 text-emerald-400" />
             <span className="text-xs font-bold text-gray-200 font-mono">
               Cloudflare Worker Execution Logs
