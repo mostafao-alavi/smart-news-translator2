@@ -116,9 +116,9 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
 
   const filteredNews = news.filter((item) => {
     const term = searchTerm.toLowerCase();
-    const titleMatch = item.title.toLowerCase().includes(term);
+    const titleMatch = item.title?.toLowerCase().includes(term) ?? false;
     const faTitleMatch = item.translated_title?.toLowerCase().includes(term) ?? false;
-    const sourceMatch = item.source_name.toLowerCase().includes(term);
+    const sourceMatch = item.source_name?.toLowerCase().includes(term) ?? false;
     const matchesSearch = titleMatch || faTitleMatch || sourceMatch;
 
     if (statusFilter === 'translated') {

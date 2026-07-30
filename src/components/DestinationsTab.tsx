@@ -12,13 +12,34 @@ export const DestinationsTab: React.FC<DestinationsTabProps> = ({
 }) => {
   const [subTab, setSubTab] = useState<'wordpress' | 'social' | 'api'>(initialSubTab);
 
+  const [loading, setLoading] = useState(true);
+  const [platformId, setPlatformId] = useState<number | null>(null);
+
   // WordPress Destination State
-  const [wpUrl, setWpUrl] = useState('https://updaaate.ir');
-  const [wpApiEndpoint, setWpApiEndpoint] = useState('https://updaaate.ir/wp-json/wp/v2/posts');
-  const [wpUsername, setWpUsername] = useState('admin');
-  const [wpAppPassword, setWpAppPassword] = useState('••••••••••••••••');
+  const [wpUrl, setWpUrl] = useState('');
+  const [wpApiEndpoint, setWpApiEndpoint] = useState('');
+  const [wpUsername, setWpUsername] = useState('');
+  const [wpAppPassword, setWpAppPassword] = useState('');
   const [wpDefaultCategory, setWpDefaultCategory] = useState('1');
   const [autoPublishWp, setAutoPublishWp] = useState(true);
+
+  React.useEffect(() => {
+    fetch('/api/platforms')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && data.data.length > 0) {
+          const wpPlatform = data.data.find((p: any) => p.platform_type === 'wordpress');
+          if (wpPlatform) {
+            setPlatformId(wpPlatform.id);
+            setWpUrl(wpPlatform.api_url.replace('/wp-json/wp/v2', ''));
+            setWpApiEndpoint(wpPlatform.api_url);
+            setWpUsername(wpPlatform.auth_username || '');
+            setWpAppPassword('••••••••••••••••'); // Hide password
+          }
+        }
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   const [testingWp, setTestingWp] = useState(false);
   const [wpTestResult, setWpTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -34,7 +55,7 @@ export const DestinationsTab: React.FC<DestinationsTabProps> = ({
     setTestingWp(true);
     setWpTestResult(null);
     try {
-      const res = await fetch('/api/test-wp-connection', {
+      const res = await fetch('/api/wp-sync/test-connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: wpUrl }),
@@ -138,47 +159,52 @@ export const DestinationsTab: React.FC<DestinationsTabProps> = ({
       {/* 1. WordPress Tab */}
       {subTab === 'wordpress' && (
         <div className="space-y-6">
-          {/* Main Target Site Card: updaaate.ir */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-gray-100">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-purple-100 text-purple-700 rounded-2xl border border-purple-200">
-                  <Globe className="w-6 h-6" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold text-gray-900">سایت هدف اصلی: updaaate.ir</h3>
-                    <span className="bg-emerald-100 text-emerald-800 text-[10px] px-2.5 py-0.5 rounded-full font-bold border border-emerald-200">
-                      پلتفرم فعال
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-0.5 dir-ltr text-right font-mono">
-                    https://updaaate.ir/wp-json/wp/v2/posts
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <a
-                  href="https://updaaate.ir"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs px-3 py-2 rounded-xl font-bold transition-colors flex items-center gap-1.5"
-                >
-                  <span>بازکردن سایت</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </a>
-
-                <button
-                  onClick={handleTestWpConnection}
-                  disabled={testingWp}
-                  className="bg-purple-600 hover:bg-purple-700 text-white text-xs px-4 py-2 rounded-xl font-bold transition-all shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${testingWp ? 'animate-spin' : ''}`} />
-                  <span>تست اتصال REST API</span>
-                </button>
-              </div>
+          {loading ? (
+            <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center text-gray-500 shadow-xs">
+              <RefreshCw className="w-8 h-8 animate-spin mx-auto text-purple-600 mb-3" />
+              <p className="text-sm font-bold">در حال بارگذاری تنظیمات...</p>
             </div>
+          ) : platformId ? (
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-gray-100">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-purple-100 text-purple-700 rounded-2xl border border-purple-200">
+                    <Globe className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold text-gray-900">سایت هدف اصلی: {wpUrl.replace('https://', '').replace('http://', '')}</h3>
+                      <span className="bg-emerald-100 text-emerald-800 text-[10px] px-2.5 py-0.5 rounded-full font-bold border border-emerald-200">
+                        پلتفرم فعال
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5 dir-ltr text-right font-mono">
+                      {wpApiEndpoint}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <a
+                    href={wpUrl || 'https://updaaate.ir'}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="bg-gray-100 hover:bg-gray-200 text-gray-800 text-xs px-3 py-2 rounded-xl font-bold transition-colors flex items-center gap-1.5"
+                  >
+                    <span>بازکردن سایت</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+
+                  <button
+                    onClick={handleTestWpConnection}
+                    disabled={testingWp}
+                    className="bg-purple-600 hover:bg-purple-700 text-white text-xs px-4 py-2 rounded-xl font-bold transition-all shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${testingWp ? 'animate-spin' : ''}`} />
+                    <span>تست اتصال REST API</span>
+                  </button>
+                </div>
+              </div>
 
             {wpTestResult && (
               <div className={`p-3.5 rounded-xl border text-xs flex items-center gap-2.5 ${
@@ -261,6 +287,12 @@ export const DestinationsTab: React.FC<DestinationsTabProps> = ({
               </div>
             </div>
           </div>
+          ) : (
+             <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center text-gray-500 shadow-xs">
+                <Globe className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                <p className="text-sm font-bold">پلتفرم وردپرسی یافت نشد</p>
+             </div>
+          )}
         </div>
       )}
 

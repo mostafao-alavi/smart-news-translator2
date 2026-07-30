@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { JoinedArticleNews } from '../types/client';
-import { NewsFeedTab } from './NewsFeedTab';
-import { Clock, CheckCircle2, Archive, Sparkles } from 'lucide-react';
+import { Clock, CheckCircle2, Archive, Users } from 'lucide-react';
+import { SmartQueueTab, ReviewStudioTab, EditorialCollabTab, DeepArchiveTab } from './ContentDeskSubTabs';
 
 interface ContentDeskTabProps {
   news: JoinedArticleNews[];
@@ -14,23 +14,12 @@ interface ContentDeskTabProps {
   onCreateCustomArticle: (title: string, content: string, model?: string) => Promise<boolean>;
   isTriggeringScraper: boolean;
   isTriggeringTranslator: boolean;
-  initialSubTab?: 'pending' | 'review' | 'archive';
+  initialSubTab?: 'queue' | 'studio' | 'collab' | 'archive';
 }
 
-export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
-  news,
-  loading,
-  onRefresh,
-  onTriggerScraper,
-  onTriggerTranslator,
-  onTranslateArticle,
-  onDeleteArticle,
-  onCreateCustomArticle,
-  isTriggeringScraper,
-  isTriggeringTranslator,
-  initialSubTab = 'archive',
-}) => {
-  const [subTab, setSubTab] = useState<'pending' | 'review' | 'archive'>(initialSubTab);
+export const ContentDeskTab: React.FC<ContentDeskTabProps> = (props) => {
+  const { initialSubTab = 'queue', news } = props;
+  const [subTab, setSubTab] = useState<'queue' | 'studio' | 'collab' | 'archive'>(initialSubTab);
 
   // Filtered news subsets
   const pendingNews = news.filter((item) => item.translation_status === 'pending' || !item.translated_title);
@@ -40,54 +29,67 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
     <div className="space-y-6">
       {/* Top Sub-Menu Bar for Content Desk */}
       <div className="bg-white border border-gray-200 rounded-2xl p-2 flex items-center justify-between gap-2 shadow-xs">
-        <div className="flex items-center gap-1.5 overflow-x-auto w-full">
-          {/* SubTab 1: Pending Queue */}
+        <div className="flex items-center gap-1.5 overflow-x-auto w-full scrollbar-none">
+          {/* SubTab 1: Smart Queue */}
           <button
-            onClick={() => setSubTab('pending')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
-              subTab === 'pending'
+            onClick={() => setSubTab('queue')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+              subTab === 'queue'
                 ? 'bg-amber-500 text-white shadow-xs'
                 : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
             <Clock className="w-4 h-4" />
-            <span>در صف ترجمه (Pending Queue)</span>
+            <span>مدیریت هوشمند صف (Smart Queue)</span>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-              subTab === 'pending' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'
+              subTab === 'queue' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'
             }`}>
               {pendingNews.length}
             </span>
           </button>
 
-          {/* SubTab 2: Needs Review */}
+          {/* SubTab 2: Review Studio */}
           <button
-            onClick={() => setSubTab('review')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
-              subTab === 'review'
+            onClick={() => setSubTab('studio')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+              subTab === 'studio'
                 ? 'bg-emerald-600 text-white shadow-xs'
                 : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>نیاز به بررسی و تایید (Review)</span>
+            <span>استودیوی ویرایش (Review Studio)</span>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-              subTab === 'review' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'
+              subTab === 'studio' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-800'
             }`}>
               {reviewNews.length}
             </span>
           </button>
 
-          {/* SubTab 3: Archive */}
+          {/* SubTab 3: Editorial Collab */}
+          <button
+            onClick={() => setSubTab('collab')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+              subTab === 'collab'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>کار تیمی (Collaboration)</span>
+          </button>
+
+          {/* SubTab 4: Deep Archive */}
           <button
             onClick={() => setSubTab('archive')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap ${
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
               subTab === 'archive'
                 ? 'bg-orange-500 text-white shadow-xs'
                 : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
             <Archive className="w-4 h-4" />
-            <span>بایگانی کامل اخبار (Archive)</span>
+            <span>بایگانی عمیق (Deep Archive)</span>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
               subTab === 'archive' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-700'
             }`}>
@@ -98,86 +100,20 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
       </div>
 
       {/* Main SubTab Content View */}
-      {subTab === 'pending' && (
-        <div className="space-y-4">
-          <div className="bg-amber-50/60 border border-amber-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-amber-500 text-white rounded-xl shadow-2xs">
-                <Clock className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-gray-900">اخبار خام در صف ترجمه هوش مصنوعی</h3>
-                <p className="text-xs text-gray-600 mt-0.5">اخباری که توسط پایشگر RSS استخراج شده و منتظر پردازش Workers AI هستند</p>
-              </div>
-            </div>
-
-            <button
-              onClick={onTriggerTranslator}
-              disabled={isTriggeringTranslator}
-              className="bg-amber-500 hover:bg-amber-600 text-white text-xs px-4 py-2 rounded-xl font-bold transition-all shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50 shrink-0"
-            >
-              <Sparkles className={`w-4 h-4 ${isTriggeringTranslator ? 'animate-spin' : ''}`} />
-              <span>پردازش دسته‌ای کل صف ترجمه</span>
-            </button>
-          </div>
-
-          <NewsFeedTab
-            news={pendingNews}
-            loading={loading}
-            onRefresh={onRefresh}
-            onTriggerScraper={onTriggerScraper}
-            onTriggerTranslator={onTriggerTranslator}
-            onTranslateArticle={onTranslateArticle}
-            onDeleteArticle={onDeleteArticle}
-            onCreateCustomArticle={onCreateCustomArticle}
-            isTriggeringScraper={isTriggeringScraper}
-            isTriggeringTranslator={isTriggeringTranslator}
-          />
-        </div>
+      {subTab === 'queue' && (
+        <SmartQueueTab {...props} news={pendingNews} />
       )}
 
-      {subTab === 'review' && (
-        <div className="space-y-4">
-          <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-emerald-600 text-white rounded-xl shadow-2xs">
-                <CheckCircle2 className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-bold text-gray-900">میز بررسی و تایید سردبیری (Editor Approval Desk)</h3>
-                <p className="text-xs text-gray-600 mt-0.5">اخبار ترجمه‌شده توسط AI که آماده تایید نهایی و انتشار مستقیم روی سایت وردپرس هستند</p>
-              </div>
-            </div>
-          </div>
+      {subTab === 'studio' && (
+        <ReviewStudioTab news={reviewNews} />
+      )}
 
-          <NewsFeedTab
-            news={reviewNews}
-            loading={loading}
-            onRefresh={onRefresh}
-            onTriggerScraper={onTriggerScraper}
-            onTriggerTranslator={onTriggerTranslator}
-            onTranslateArticle={onTranslateArticle}
-            onDeleteArticle={onDeleteArticle}
-            onCreateCustomArticle={onCreateCustomArticle}
-            isTriggeringScraper={isTriggeringScraper}
-            isTriggeringTranslator={isTriggeringTranslator}
-          />
-        </div>
+      {subTab === 'collab' && (
+        <EditorialCollabTab news={reviewNews} />
       )}
 
       {subTab === 'archive' && (
-        <NewsFeedTab
-          news={news}
-          loading={loading}
-          onRefresh={onRefresh}
-          onTriggerScraper={onTriggerScraper}
-          onTriggerTranslator={onTriggerTranslator}
-          onTranslateArticle={onTranslateArticle}
-          onDeleteArticle={onDeleteArticle}
-          onCreateCustomArticle={onCreateCustomArticle}
-          isTriggeringScraper={isTriggeringScraper}
-          isTriggeringTranslator={isTriggeringTranslator}
-        />
+        <DeepArchiveTab news={news} />
       )}
     </div>
   );

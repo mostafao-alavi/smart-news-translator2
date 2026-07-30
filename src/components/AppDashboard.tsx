@@ -271,7 +271,7 @@ export const AppDashboard: React.FC = () => {
 
   const handleBulkToggleStatus = async (ids: number[], active: boolean) => {
     try {
-      const res = await fetch('/api/sources/bulk-toggle', {
+      const res = await fetch('/api/sources/bulk-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ids, is_active: active }),
@@ -385,7 +385,7 @@ export const AppDashboard: React.FC = () => {
             onScrapeSource={handleScrapeSource}
             onTestFeed={handleTestFeed}
             onRefresh={fetchSources}
-            initialSubTab={(activeSubTab as any) || 'rss'}
+            initialSubTab={(activeSubTab as any) || 'connectors'}
           />
         )}
 
@@ -402,7 +402,7 @@ export const AppDashboard: React.FC = () => {
             onCreateCustomArticle={handleCreateCustomArticle}
             isTriggeringScraper={isTriggeringScraper}
             isTriggeringTranslator={isTriggeringTranslator}
-            initialSubTab={(activeSubTab as any) || 'archive'}
+            initialSubTab={(activeSubTab as any) || 'queue'}
           />
         )}
 
@@ -423,7 +423,7 @@ export const AppDashboard: React.FC = () => {
             isTriggeringScraper={isTriggeringScraper}
             isTriggeringTranslator={isTriggeringTranslator}
             workerFiles={workerFiles}
-            initialSubTab={(activeSubTab as any) || 'distributions'}
+            initialSubTab={(activeSubTab as any) || 'tracing'}
           />
         )}
 
@@ -444,7 +444,7 @@ export const AppDashboard: React.FC = () => {
             onUpdateSource={handleUpdateSource}
             onDeleteSource={handleDeleteSource}
             onDeleteArticle={handleDeleteArticle}
-            initialSubTab={(activeSubTab as any) || 'prompts'}
+            initialSubTab={(activeSubTab as any) || 'engine'}
           />
         )}
       </main>
