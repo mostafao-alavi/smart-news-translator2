@@ -1571,9 +1571,19 @@ api.post('/wp-sync/test-connection', async (c) => {
       body = await c.req.json();
     } catch {}
 
-    const apiUrl = (body.api_url || c.env.WP_API_URL || 'https://updaaate.ir/wp-json/wp/v2/posts').trim();
+    const apiUrl = (body.api_url || c.env.WP_API_URL || 'https://updaaate.ir/wp-json/wp/v2/').trim();
     const username = (body.username || c.env.WP_USERNAME || '').trim();
-    const appPassword = (body.app_password || c.env.WP_APPLICATION_PASSWORD || '').trim();
+    let appPassword = (body.app_password || c.env.WP_APPLICATION_PASSWORD || '').trim();
+
+    // If the frontend sends the masked password, fetch the real one from the DB
+    if (appPassword === '••••••••••••••••') {
+      try {
+        const platform = await c.env.DB.prepare('SELECT auth_password_secret FROM platforms WHERE api_url = ? AND auth_username = ?').bind(apiUrl, username).first() as any;
+        if (platform && platform.auth_password_secret) {
+          appPassword = platform.auth_password_secret;
+        }
+      } catch (err) {}
+    }
 
     if (!username || !appPassword) {
       return c.json({
@@ -1716,7 +1726,7 @@ api.post('/d1/query', async (c) => {
       const res = await c.env.DB.prepare(query).all();
       results = res.results || [];
     } catch (e) {
-       const res = await c.env.DB.prepare(query).run();
+       const res = await c.env.DB.prepare(query).run() as any;
        results = [{ success: res.success, changes: res.meta?.changes, last_row_id: res.meta?.last_row_id }];
     }
     const duration = Date.now() - startTime;

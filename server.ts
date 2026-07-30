@@ -28,7 +28,7 @@ async function startServer() {
   const fetchHandler = (req: any, env: any, ctx: any) => {
       return apiRoutes.fetch(req, { DB: mockD1, ...process.env, ...env }, ctx);
   };
-  const honoListener = getRequestListener(fetchHandler);
+  const honoListener = getRequestListener(fetchHandler as any);
 
   // Mount API
   app.use('/api', (req, res, next) => {

@@ -71,7 +71,7 @@ export async function wpSyncPublisher(
       name: 'updaaate.ir (سایت اصلی)',
       slug: 'updaaate_ir',
       platform_type: 'wordpress',
-      api_url: (env.WP_API_URL || 'https://updaaate.ir/wp-json/wp/v2/posts').trim(),
+      api_url: (env.WP_API_URL || 'https://updaaate.ir/wp-json/wp/v2/').trim(),
       auth_username: (env.WP_USERNAME || '').trim(),
       auth_password_secret: (env.WP_APPLICATION_PASSWORD || '').trim(),
       is_active: 1

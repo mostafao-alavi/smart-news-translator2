@@ -58,7 +58,11 @@ export const DestinationsTab: React.FC<DestinationsTabProps> = ({
       const res = await fetch('/api/wp-sync/test-connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: wpUrl }),
+        body: JSON.stringify({
+          api_url: wpApiEndpoint,
+          username: wpUsername,
+          app_password: wpAppPassword
+        }),
       });
       const data = await res.json();
       if (data.success) {
