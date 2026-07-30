@@ -10,7 +10,7 @@ enabled = true
 # ۱. دیتابیس D1 کلودفلر (ذخیره کامل متادیتا، اخبار، ترجمه‌ها و لاگ‌ها همراه با مدیریت حجم <500MB)
 [[d1_databases]]
 binding = "DB"
-database_name = "news-metadata-db"
+database_name = "news_db"
 database_id = "2815bd80-f483-4f9b-872d-93047309ed13"
 
 # ۲. مدل‌های هوش مصنوعی بومی کلودفلر (Workers AI)
@@ -43,7 +43,16 @@ max_concurrency = 1
 directory = "./dist"
 not_found_handling = "single-page-application"
 
-# ۵. کرون‌جاب‌های زمان‌بندی‌شده (ساعتی جهت اسکرپ، ترجمه و پاکسازی Garbage Collection دیتابیس D1)
+# ۵. کرون‌جاب‌های زمان‌بندی‌شده (ساعتی جهت اسکرپ، ترجمه، انتشار وردپرس و پاکسازی D1)
 [triggers]
 crons = ["0 * * * *"]
+
+# ۶. متغیرهای عمومی تنظیمات وردپرس (updaaate.ir)
+# توجه: متغیرهای حساس مثل WP_APPLICATION_PASSWORD و WP_USERNAME باید با دستور زیر تعریف شوند:
+# npx wrangler secret put WP_APPLICATION_PASSWORD
+# npx wrangler secret put WP_USERNAME
+[vars]
+WP_API_URL = "https://updaaate.ir/wp-json/wp/v2/posts"
+WP_POST_STATUS = "publish"
+
 

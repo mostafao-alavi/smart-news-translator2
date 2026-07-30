@@ -1,9 +1,10 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/cloudflare-workers';
-import apiRoutes, { pruneOldArticles } from './api/routes';
-import { scraper, extractFullArticleText } from './cron/scraper';
-import { translator } from './cron/translator';
-import { Env, ApiResponse, ScheduledEvent, ExecutionContext, MessageBatch } from './types';
+import apiRoutes, { pruneOldArticles } from './api/routes.ts';
+import { scraper, extractFullArticleText } from './cron/scraper.ts';
+import { translator } from './cron/translator.ts';
+import { wpSyncPublisher } from './cron/wpSync.ts';
+import { Env, ApiResponse, ScheduledEvent, ExecutionContext, MessageBatch } from './types.ts';
 
 const app = new Hono<{ Bindings: Env }>();
 

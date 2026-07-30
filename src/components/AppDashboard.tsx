@@ -5,26 +5,28 @@ import { StatsOverview } from './StatsOverview';
 import { NewsFeedTab } from './NewsFeedTab';
 import { SourcesTab } from './SourcesTab';
 import { SettingsTab } from './SettingsTab';
+import { D1ManagerTab } from './D1ManagerTab';
 import { JoinedArticleNews, SourceItem, StatsData, WorkerFileInfo } from '../types/client';
 
 export const AppDashboard: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const getTabFromPath = (): 'news' | 'sources' | 'settings' => {
+  const getTabFromPath = (): 'news' | 'sources' | 'd1' | 'settings' => {
     const path = location.pathname.toLowerCase();
     if (path.includes('sources')) return 'sources';
+    if (path.includes('d1') || path.includes('database') || path.includes('crud') || path.includes('distributions')) return 'd1';
     if (path.includes('settings') || path.includes('cron') || path.includes('code')) return 'settings';
     return 'news';
   };
 
-  const [activeTab, setActiveTabState] = useState<'news' | 'sources' | 'settings'>(getTabFromPath);
+  const [activeTab, setActiveTabState] = useState<'news' | 'sources' | 'd1' | 'settings'>(getTabFromPath);
 
   useEffect(() => {
     setActiveTabState(getTabFromPath());
   }, [location.pathname]);
 
-  const setActiveTab = (tab: 'news' | 'sources' | 'settings') => {
+  const setActiveTab = (tab: 'news' | 'sources' | 'd1' | 'settings') => {
     setActiveTabState(tab);
     navigate(`/app/${tab}`);
   };
@@ -403,6 +405,19 @@ export const AppDashboard: React.FC = () => {
             onScrapeSource={handleScrapeSource}
             onTestFeed={handleTestFeed}
             onRefresh={fetchSources}
+          />
+        )}
+
+        {activeTab === 'd1' && (
+          <D1ManagerTab
+            sources={sources}
+            news={news}
+            stats={stats}
+            onRefreshAll={refreshAllData}
+            onAddSource={handleAddSource}
+            onUpdateSource={handleUpdateSource}
+            onDeleteSource={handleDeleteSource}
+            onDeleteArticle={handleDeleteArticle}
           />
         )}
 

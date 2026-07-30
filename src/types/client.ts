@@ -26,11 +26,51 @@ export interface SourceItem {
   created_at?: string;
 }
 
+export interface PlatformItem {
+  id: number;
+  name: string;
+  slug: string;
+  platform_type: 'wordpress' | 'webhook' | 'rest_api' | 'telegram' | 'bale';
+  api_url: string;
+  auth_username?: string | null;
+  auth_password_secret?: string | null;
+  is_active: boolean | number;
+  created_at?: string;
+}
+
 export interface StatsData {
   sources_count: number;
   articles_count: number;
   translations_count: number;
   pending_translations_count: number;
+  approved_translations_count?: number;
+  wp_published_count?: number;
+  distributions_count?: number;
+  platforms_count?: number;
+}
+
+export interface DistributionItem {
+  id: number;
+  translation_id: number;
+  target_platform: string;
+  author_name: string | null;
+  platform_post_id: string | null;
+  published_at: string;
+  article_id?: number;
+  translated_title?: string;
+  translated_content?: string;
+  original_title?: string;
+  source_name?: string;
+  original_url?: string;
+}
+
+export interface AuthStatusInfo {
+  authenticated: boolean;
+  user_email: string | null;
+  zero_trust: boolean;
+  ip: string | null;
+  auth_method: string;
+  access_granted: boolean;
 }
 
 export interface DbStatusInfo {

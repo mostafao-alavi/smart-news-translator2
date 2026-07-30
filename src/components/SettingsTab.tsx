@@ -86,6 +86,8 @@ const API_ENDPOINTS = [
   { method: 'GET', path: '/api/health', title: 'بررسی سلامت سرور', desc: 'تست اتصال Cloudflare Worker و D1 Engine' },
   { method: 'POST', path: '/api/trigger-scraper', title: 'اجرای خودکار Scraper', desc: 'اسکرپ فیدها و افزودن اخبار جدید به D1' },
   { method: 'POST', path: '/api/trigger-translator', title: 'اجرای خودکار Translator', desc: 'ترجمه اخبار pending با Workers AI' },
+  { method: 'POST', path: '/api/trigger-wp-sync', title: 'انتشار در وردپرس (WP Publisher)', desc: 'انتشار مقالات ترجمه‌شده در سایت وردپرسی updaaate.ir' },
+  { method: 'POST', path: '/api/wp-sync/test-connection', title: 'تست اتصال به وردپرس', desc: 'بررسی نام کاربری و Application Password وردپرس' },
   { method: 'POST', path: '/api/prune-d1', title: 'پاکسازی D1 (Garbage Collection)', desc: 'حذف متن سنگین اخبار قدیمی‌تر از ۷ روز جهت نگهداری زیر ۵۰۰MB' },
   { method: 'POST', path: '/api/database/reset', title: 'پاکسازی کلی دیتابیس (Full Database Purge)', desc: 'حذف منابع خبری، اخبار، ترجمه‌ها و لاگ‌های ثبت‌شده در D1' },
   { method: 'POST', path: '/api/clear-cache', title: 'پاکسازی کش سیستم (Clear Cache)', desc: 'پاکسازی کش هدرها، پاسخ‌های HTTP سرور و تنظیم مجدد حافظه موقت' },

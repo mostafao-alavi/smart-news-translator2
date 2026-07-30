@@ -2,8 +2,8 @@ import React from 'react';
 import { Rss, Languages, Database, Settings, RefreshCw, Sparkles, Home } from 'lucide-react';
 
 interface NavbarProps {
-  activeTab: 'news' | 'sources' | 'settings';
-  setActiveTab: (tab: 'news' | 'sources' | 'settings') => void;
+  activeTab: 'news' | 'sources' | 'd1' | 'settings';
+  setActiveTab: (tab: 'news' | 'sources' | 'd1' | 'settings') => void;
   onRefreshAll: () => void;
   isRefreshing: boolean;
   onGoHome?: () => void;
@@ -78,8 +78,23 @@ export const Navbar: React.FC<NavbarProps> = ({
                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
               }`}
             >
-              <Database className="w-4 h-4 shrink-0" />
+              <Rss className="w-4 h-4 shrink-0" />
               <span>منابع</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('d1')}
+              className={`flex items-center gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all min-h-[44px] ${
+                activeTab === 'd1'
+                  ? 'bg-amber-50 text-amber-800 border border-amber-300 font-bold shadow-2xs'
+                  : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
+              }`}
+            >
+              <Database className="w-4 h-4 text-amber-500 shrink-0" />
+              <span className="flex items-center gap-1">
+                داشبورد D1
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              </span>
             </button>
 
             <button

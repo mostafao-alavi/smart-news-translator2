@@ -14,6 +14,9 @@ export default function App() {
         <Route path="/app/*" element={<AppDashboard />} />
         <Route path="/news" element={<AppDashboard />} />
         <Route path="/sources" element={<AppDashboard />} />
+        <Route path="/d1" element={<AppDashboard />} />
+        <Route path="/database" element={<AppDashboard />} />
+        <Route path="/distributions" element={<AppDashboard />} />
         <Route path="/settings" element={<AppDashboard />} />
 
         {/* Fallback to Landing Page */}

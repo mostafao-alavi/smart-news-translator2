@@ -87,6 +87,33 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
   const [customModel, setCustomModel] = useState<string>('@cf/meta/m2m100-1.2b');
   const [isSubmittingCustom, setIsSubmittingCustom] = useState(false);
 
+  // WordPress Sync State
+  const [syncingWpId, setSyncingWpId] = useState<number | null>(null);
+  const [wpSyncMessage, setWpSyncMessage] = useState<string | null>(null);
+
+  const handleWpSync = async (articleId?: number) => {
+    try {
+      if (articleId) setSyncingWpId(articleId);
+      const res = await fetch('/api/trigger-wp-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ article_id: articleId, limit: articleId ? 1 : 5 }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setWpSyncMessage(`موفقیت: ${data.data?.successCount || 0} خبر در وردپرس (updaaate.ir) منتشر شد.`);
+        onRefresh();
+      } else {
+        setWpSyncMessage(`خطا: ${data.error || 'خطا در همگام‌سازی وردپرس'}`);
+      }
+    } catch (err: any) {
+      setWpSyncMessage(`خطا: ${err.message}`);
+    } finally {
+      setSyncingWpId(null);
+      setTimeout(() => setWpSyncMessage(null), 5000);
+    }
+  };
+
   const filteredNews = news.filter((item) => {
     const term = searchTerm.toLowerCase();
     const titleMatch = item.title.toLowerCase().includes(term);
@@ -224,6 +251,16 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
               <Sparkles className={`w-3.5 h-3.5 text-orange-100 ${isTriggeringTranslator ? 'animate-pulse' : ''}`} />
               <span>{isTriggeringTranslator ? 'ترجمه...' : 'ترجمه هوشمند AI'}</span>
             </button>
+
+            <button
+              onClick={() => handleWpSync()}
+              disabled={syncingWpId !== null}
+              className="bg-blue-600 hover:bg-blue-700 text-white shadow-2xs border border-blue-700 text-xs px-3.5 py-2 rounded-xl font-bold transition-all flex items-center gap-2.5 disabled:opacity-50 min-h-[40px]"
+              title="انتشار مقالات ترجمه‌شده در سایت وردپرسی updaaate.ir"
+            >
+              <Share2 className={`w-3.5 h-3.5 text-blue-100 ${syncingWpId !== null ? 'animate-spin' : ''}`} />
+              <span className="hidden md:inline">انتشار در وردپرس</span>
+            </button>
           </div>
         </div>
 
@@ -268,6 +305,20 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
           </div>
         </div>
       </div>
+
+      {/* WordPress Toast notification */}
+      {wpSyncMessage && (
+        <div className={`p-3 rounded-xl text-xs font-bold border flex items-center justify-between ${
+          wpSyncMessage.startsWith('موفقیت') 
+            ? 'bg-emerald-50 text-emerald-800 border-emerald-200' 
+            : 'bg-rose-50 text-rose-800 border-rose-200'
+        }`}>
+          <span>{wpSyncMessage}</span>
+          <button onClick={() => setWpSyncMessage(null)} className="text-gray-400 hover:text-gray-600">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Custom Article Form Collapsible */}
       {showCustomForm && (
@@ -409,7 +460,12 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
                         {item.source_name}
                       </span>
 
-                      <div className="flex items-center gap-2.5">
+                      <div className="flex items-center gap-2">
+                        {item.wp_sync_status === 'published' && (
+                          <span className="bg-blue-100 text-blue-800 text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1">
+                            <Share2 className="w-2.5 h-2.5" /> WP
+                          </span>
+                        )}
                         <span
                           className={`w-2 h-2 rounded-full ${
                             isTranslated ? 'bg-emerald-400' : 'bg-amber-400 animate-pulse'
@@ -531,6 +587,18 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
                   >
                     <Sparkles className="w-3.5 h-3.5 text-orange-100" />
                     <span>ترجمه AI</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleWpSync(selectedArticle.id)}
+                    disabled={syncingWpId === selectedArticle.id}
+                    className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 text-xs font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-2.5 shadow-2xs disabled:opacity-50"
+                    title="ارسال این مقاله به وردپرس"
+                  >
+                    <Share2 className={`w-3.5 h-3.5 text-blue-600 ${syncingWpId === selectedArticle.id ? 'animate-spin' : ''}`} />
+                    <span className="hidden xl:inline">
+                      {selectedArticle.wp_sync_status === 'published' ? 'ارسال مجدد به WP' : 'ارسال به WP'}
+                    </span>
                   </button>
 
                   <button

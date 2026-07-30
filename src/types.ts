@@ -23,6 +23,22 @@ export interface Article {
   published_at?: string;
   created_at?: string;
   translation_status: 'pending' | 'processing' | 'completed' | 'failed';
+  wp_sync_status?: 'pending' | 'syncing' | 'published' | 'failed' | null;
+  wp_post_id?: number | null;
+  wp_published_at?: string | null;
+  wp_error?: string | null;
+}
+
+export interface Platform {
+  id?: number;
+  name: string;
+  slug: string;
+  platform_type: 'wordpress' | 'webhook' | 'rest_api' | 'telegram' | 'bale' | string;
+  api_url: string;
+  auth_username?: string | null;
+  auth_password_secret?: string | null;
+  is_active?: boolean | number;
+  created_at?: string;
 }
 
 export interface Translation {
@@ -33,6 +49,7 @@ export interface Translation {
   translated_content: string;
   translated_at?: string;
   model_used?: string;
+  approval_status?: 'pending' | 'approved' | 'rejected' | string;
 }
 
 export interface JoinedArticleNews {
@@ -45,10 +62,38 @@ export interface JoinedArticleNews {
   published_at: string;
   created_at: string;
   translation_status: string;
+  wp_sync_status?: 'pending' | 'syncing' | 'published' | 'failed' | null;
+  wp_post_id?: number | null;
+  wp_published_at?: string | null;
+  wp_error?: string | null;
   translated_title: string | null;
   translated_content?: string | null;
   translated_at: string | null;
   model_used?: string | null;
+}
+
+export interface Distribution {
+  id?: number;
+  translation_id: number;
+  target_platform: string;
+  author_name?: string | null;
+  platform_post_id?: string | null;
+  published_at?: string;
+}
+
+export interface JoinedDistribution {
+  id: number;
+  translation_id: number;
+  target_platform: string;
+  author_name: string | null;
+  platform_post_id: string | null;
+  published_at: string;
+  article_id: number;
+  translated_title: string;
+  translated_content?: string | null;
+  original_title?: string | null;
+  source_name?: string | null;
+  original_url?: string | null;
 }
 
 export interface ApiResponse<T = any> {
@@ -62,6 +107,10 @@ export interface StatsData {
   articles_count: number;
   translations_count: number;
   pending_translations_count: number;
+  approved_translations_count?: number;
+  wp_published_count?: number;
+  distributions_count?: number;
+  platforms_count?: number;
 }
 
 // Ambient Cloudflare Worker Types
@@ -126,6 +175,11 @@ export interface Env {
   SCRAPE_QUEUE: Queue;
   TRANSLATE_QUEUE: Queue;
   AI: any; // برای دسترسی به Workers AI
-  GEMINI_API_KEY: string; // تزریقشده توسط Secrets Store
+  GEMINI_API_KEY: string; // تزریق‌شده توسط Secrets Store
   ADMIN_SECRET: string;
+  WP_API_URL?: string;
+  WP_USERNAME?: string;
+  WP_APPLICATION_PASSWORD?: string;
+  WP_POST_STATUS?: string;
+  WP_CATEGORY_ID?: string;
 }
