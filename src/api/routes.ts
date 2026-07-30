@@ -612,8 +612,13 @@ api.post('/sources/bulk-delete', async (c) => {
 
     const numIds = ids.map((i) => Number(i));
     const placeholders = numIds.map(() => '?').join(',');
-    await c.env.DB.prepare(`DELETE FROM sources WHERE id IN (${placeholders})`).bind(...numIds).run();
-    await c.env.DB.prepare(`DELETE FROM articles WHERE source_id IN (${placeholders})`).bind(...numIds).run();
+    await c.env.DB.batch([
+      c.env.DB.prepare(`DELETE FROM distributions WHERE translation_id IN (SELECT id FROM translations WHERE article_id IN (SELECT id FROM articles WHERE source_id IN (${placeholders})))`).bind(...numIds),
+      c.env.DB.prepare(`DELETE FROM translation_history WHERE article_id IN (SELECT id FROM articles WHERE source_id IN (${placeholders}))`).bind(...numIds),
+      c.env.DB.prepare(`DELETE FROM translations WHERE article_id IN (SELECT id FROM articles WHERE source_id IN (${placeholders}))`).bind(...numIds),
+      c.env.DB.prepare(`DELETE FROM articles WHERE source_id IN (${placeholders})`).bind(...numIds),
+      c.env.DB.prepare(`DELETE FROM sources WHERE id IN (${placeholders})`).bind(...numIds)
+    ]);
 
     return c.json({
       success: true,
@@ -895,6 +900,8 @@ api.delete('/sources/:id', async (c) => {
   try {
     const id = c.req.param('id');
     await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM distributions WHERE translation_id IN (SELECT id FROM translations WHERE article_id IN (SELECT id FROM articles WHERE source_id = ?))').bind(id),
+      c.env.DB.prepare('DELETE FROM translation_history WHERE article_id IN (SELECT id FROM articles WHERE source_id = ?)').bind(id),
       c.env.DB.prepare('DELETE FROM translations WHERE article_id IN (SELECT id FROM articles WHERE source_id = ?)').bind(id),
       c.env.DB.prepare('DELETE FROM articles WHERE source_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM sources WHERE id = ?').bind(id),
@@ -910,6 +917,8 @@ api.delete('/news/:id', async (c) => {
   try {
     const id = c.req.param('id');
     await c.env.DB.batch([
+      c.env.DB.prepare('DELETE FROM distributions WHERE translation_id IN (SELECT id FROM translations WHERE article_id = ?)').bind(id),
+      c.env.DB.prepare('DELETE FROM translation_history WHERE article_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM translations WHERE article_id = ?').bind(id),
       c.env.DB.prepare('DELETE FROM articles WHERE id = ?').bind(id),
     ]);

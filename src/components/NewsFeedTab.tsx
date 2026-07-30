@@ -480,16 +480,25 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
                       </div>
                     </div>
 
-                    {/* Item Title */}
-                    <p className={`text-xs sm:text-sm line-clamp-2 leading-snug ${isSelected ? 'text-white' : 'text-gray-900 font-bold'}`}>
-                      {item.translated_title || item.title}
-                    </p>
+                    <div className="flex gap-3 mt-2">
+                      {item.featured_image && (
+                        <div className="shrink-0 w-16 h-16 rounded-lg overflow-hidden border border-gray-100/50">
+                          <img src={item.featured_image} alt="" className="w-full h-full object-cover" />
+                        </div>
+                      )}
+                      <div className="flex-1 space-y-1">
+                        {/* Item Title */}
+                        <p className={`text-xs sm:text-sm line-clamp-2 leading-snug ${isSelected ? 'text-white' : 'text-gray-900 font-bold'}`}>
+                          {item.translated_title || item.title}
+                        </p>
 
-                    {item.translated_title && (
-                      <p className={`text-[10px] line-clamp-1 ltr text-left ${isSelected ? 'text-orange-100' : 'text-gray-400 font-mono'}`}>
-                        {item.title}
-                      </p>
-                    )}
+                        {item.translated_title && (
+                          <p className={`text-[10px] line-clamp-1 ltr text-left ${isSelected ? 'text-orange-100' : 'text-gray-400 font-mono'}`}>
+                            {item.title}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </button>
                 );
               })

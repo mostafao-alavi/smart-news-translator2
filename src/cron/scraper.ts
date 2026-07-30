@@ -13,11 +13,11 @@ function sanitizeContent(markdown: string): string {
 
   // 2. Remove Category and Published Date metadata
   // e.g., [Latest News](/category/latest-news)PublishedJul 30, 2026
-  cleaned = cleaned.replace(/\[[^\]]+\]\([^)]+\)Published\s?[a-zA-Z]{3,10}\s?\d{1,2},\s?\d{4}/g, '');
+  cleaned = cleaned.replace(/\[[^\]]+\]\([^)]+\)Published\s?[a-zA-Z]{3,10}\s?\d{1,2},\s?\d{4}/g, '\n\n');
 
   // 3. Remove Inline Related Links
   // e.g., _**Related:**_ [_**Pavel Durov says Telegram to roll out native Gram crypto wallet**_](...)
-  cleaned = cleaned.replace(/_?\*?\*?Related:\*?\*?_?\s*\[.*?\]\(.*?\)/gi, '');
+  cleaned = cleaned.replace(/_?\*?\*?Related:\*?\*?_?\s*\[.*?\]\(.*?\)/gi, '\n\n');
 
   // 4. Remove footer/end sections
   const truncatePhrases = [
