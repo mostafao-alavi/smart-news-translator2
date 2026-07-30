@@ -538,17 +538,19 @@ api.put('/sources/:id', async (c) => {
 // POST /api/sources/bulk-delete - Bulk delete selected sources
 api.post('/sources/bulk-delete', async (c) => {
   try {
-    const { ids } = await c.req.json<{ ids: number[] }>();
+    const { ids } = await c.req.json<{ ids: (number | string)[] }>();
     if (!Array.isArray(ids) || ids.length === 0) {
       return c.json({ success: false, data: null, error: 'لیست شناسه منابع ارسالی نامعتبر است' }, 400);
     }
 
-    const placeholders = ids.map(() => '?').join(',');
-    await c.env.DB.prepare(`DELETE FROM sources WHERE id IN (${placeholders})`).bind(...ids).run();
+    const numIds = ids.map((i) => Number(i));
+    const placeholders = numIds.map(() => '?').join(',');
+    await c.env.DB.prepare(`DELETE FROM sources WHERE id IN (${placeholders})`).bind(...numIds).run();
+    await c.env.DB.prepare(`DELETE FROM articles WHERE source_id IN (${placeholders})`).bind(...numIds).run();
 
     return c.json({
       success: true,
-      data: { message: `تعداد ${ids.length} منبع با موفقیت حذف گردید`, deletedIds: ids },
+      data: { message: `تعداد ${numIds.length} منبع با موفقیت حذف گردید`, deletedIds: numIds },
       error: null,
     }, 200);
   } catch (err: any) {
@@ -559,18 +561,19 @@ api.post('/sources/bulk-delete', async (c) => {
 // POST /api/sources/bulk-status - Bulk toggle active/inactive status
 api.post('/sources/bulk-status', async (c) => {
   try {
-    const { ids, is_active } = await c.req.json<{ ids: number[]; is_active: boolean }>();
+    const { ids, is_active } = await c.req.json<{ ids: (number | string)[]; is_active: boolean }>();
     if (!Array.isArray(ids) || ids.length === 0) {
       return c.json({ success: false, data: null, error: 'لیست شناسه منابع ارسالی نامعتبر است' }, 400);
     }
 
+    const numIds = ids.map((i) => Number(i));
     const statusVal = is_active ? 1 : 0;
-    const placeholders = ids.map(() => '?').join(',');
-    await c.env.DB.prepare(`UPDATE sources SET is_active = ? WHERE id IN (${placeholders})`).bind(statusVal, ...ids).run();
+    const placeholders = numIds.map(() => '?').join(',');
+    await c.env.DB.prepare(`UPDATE sources SET is_active = ? WHERE id IN (${placeholders})`).bind(statusVal, ...numIds).run();
 
     return c.json({
       success: true,
-      data: { message: `وضعیت ${ids.length} منبع بروزرسانی شد`, ids, is_active: statusVal },
+      data: { message: `وضعیت ${numIds.length} منبع بروزرسانی شد`, ids: numIds, is_active: statusVal },
       error: null,
     }, 200);
   } catch (err: any) {
@@ -1613,16 +1616,27 @@ api.post('/database/reset', async (c) => {
       clearSources?: boolean;
       clearArticles?: boolean;
       clearTranslations?: boolean;
+      clearApprovedTranslations?: boolean;
+      clearPendingTranslations?: boolean;
       clearLogs?: boolean;
       target?: string;
     }
     const body: ResetRequestBody = await c.req.json<ResetRequestBody>().catch(() => ({ target: 'all' }));
 
-    const isAll = body.target === 'all' || (!body.clearSources && !body.clearArticles && !body.clearTranslations && !body.clearLogs);
+    const isAll = body.target === 'all' || (
+      !body.clearSources &&
+      !body.clearArticles &&
+      !body.clearTranslations &&
+      !body.clearApprovedTranslations &&
+      !body.clearPendingTranslations &&
+      !body.clearLogs
+    );
 
     const shouldSources = isAll || !!body.clearSources;
     const shouldArticles = isAll || !!body.clearArticles;
     const shouldTranslations = isAll || !!body.clearTranslations;
+    const shouldApprovedTranslations = !shouldTranslations && !!body.clearApprovedTranslations;
+    const shouldPendingTranslations = !shouldTranslations && !!body.clearPendingTranslations;
     const shouldLogs = isAll || !!body.clearLogs;
 
     const statements: any[] = [];
@@ -1632,6 +1646,14 @@ api.post('/database/reset', async (c) => {
       statements.push(c.env.DB.prepare('DELETE FROM translation_history'));
       try { statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'translations'")); } catch {}
       try { statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'translation_history'")); } catch {}
+    } else {
+      if (shouldApprovedTranslations) {
+        statements.push(c.env.DB.prepare("DELETE FROM translations WHERE approval_status = 'approved' OR approval_status IS NULL"));
+      }
+      if (shouldPendingTranslations) {
+        statements.push(c.env.DB.prepare("DELETE FROM translations WHERE approval_status = 'pending'"));
+        statements.push(c.env.DB.prepare("UPDATE articles SET translation_status = 'failed' WHERE translation_status IN ('pending', 'processing')"));
+      }
     }
 
     if (shouldArticles) {
@@ -1667,6 +1689,8 @@ api.post('/database/reset', async (c) => {
           sources: shouldSources,
           articles: shouldArticles,
           translations: shouldTranslations,
+          approvedTranslations: shouldApprovedTranslations,
+          pendingTranslations: shouldPendingTranslations,
           logs: shouldLogs,
         },
         timestamp: new Date().toISOString()

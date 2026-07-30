@@ -247,8 +247,11 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
 
   // Toggle single item selection
   const handleToggleSelect = (id: number) => {
+    const numId = Number(id);
     setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+      prev.some((item) => Number(item) === numId)
+        ? prev.filter((item) => Number(item) !== numId)
+        : [...prev, numId]
     );
   };
 
@@ -276,7 +279,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
     if (selectedIds.length === filteredSources.length && filteredSources.length > 0) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(filteredSources.map((s) => s.id));
+      setSelectedIds(filteredSources.map((s) => Number(s.id)));
     }
   };
 
@@ -284,12 +287,13 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
   const handleConfirmBulkDelete = async () => {
     if (selectedIds.length === 0) return;
     setIsBulkDeleting(true);
+    const count = selectedIds.length;
     const ok = await onBulkDeleteSources(selectedIds);
     setIsBulkDeleting(false);
     setShowConfirmBulkDelete(false);
     if (ok) {
       setSelectedIds([]);
-      setSuccessMsg(`تعداد ${selectedIds.length} منبع خبری با موفقیت حذف گردید.`);
+      setSuccessMsg(`تعداد ${count} منبع خبری با موفقیت حذف گردید.`);
       setTimeout(() => setSuccessMsg(null), 4000);
     } else {
       setErrorMsg('خطا در حذف گروهی منابع.');
@@ -300,10 +304,12 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
   const handleBulkToggle = async (targetActiveStatus: boolean) => {
     if (selectedIds.length === 0) return;
     setIsBulkToggling(true);
+    const count = selectedIds.length;
     const ok = await onBulkToggleStatus(selectedIds, targetActiveStatus);
     setIsBulkToggling(false);
     if (ok) {
-      setSuccessMsg(`وضعیت ${selectedIds.length} منبع با موفقیت به ${targetActiveStatus ? 'فعال' : 'غیرفعال'} تغییر یافت.`);
+      setSelectedIds([]);
+      setSuccessMsg(`وضعیت ${count} منبع با موفقیت به ${targetActiveStatus ? 'فعال' : 'غیرفعال'} تغییر یافت.`);
       setTimeout(() => setSuccessMsg(null), 4000);
     } else {
       setErrorMsg('خطا در بروزرسانی وضعیت گروهی منابع.');
@@ -908,7 +914,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
           ) : (
             <div className="space-y-3.5">
               {filteredSources.map((src) => {
-                const isSelected = selectedIds.includes(src.id);
+                const isSelected = selectedIds.some((sId) => Number(sId) === Number(src.id));
                 const isActive = src.is_active === undefined || src.is_active === 1 || src.is_active === true;
                 const isEditing = editingSourceId === src.id;
 

@@ -1,33 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Navbar } from './Navbar';
-import { StatsOverview } from './StatsOverview';
-import { NewsFeedTab } from './NewsFeedTab';
-import { SourcesTab } from './SourcesTab';
-import { SettingsTab } from './SettingsTab';
-import { D1ManagerTab } from './D1ManagerTab';
+import { Navbar, MainAppTab } from './Navbar';
+import { DashboardTab } from './DashboardTab';
+import { InputSourcesTab } from './InputSourcesTab';
+import { ContentDeskTab } from './ContentDeskTab';
+import { DestinationsTab } from './DestinationsTab';
+import { ReportsLogsTab } from './ReportsLogsTab';
+import { SystemAISettingsTab } from './SystemAISettingsTab';
 import { JoinedArticleNews, SourceItem, StatsData, WorkerFileInfo } from '../types/client';
 
 export const AppDashboard: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const getTabFromPath = (): 'news' | 'sources' | 'd1' | 'settings' => {
+  const getTabFromPath = (): MainAppTab => {
     const path = location.pathname.toLowerCase();
-    if (path.includes('sources')) return 'sources';
-    if (path.includes('d1') || path.includes('database') || path.includes('crud') || path.includes('distributions')) return 'd1';
-    if (path.includes('settings') || path.includes('cron') || path.includes('code')) return 'settings';
-    return 'news';
+    if (path.includes('sources') || path.includes('rss') || path.includes('categories')) return 'sources';
+    if (path.includes('content') || path.includes('news') || path.includes('desk') || path.includes('pending') || path.includes('review') || path.includes('archive')) return 'content-desk';
+    if (path.includes('destinations') || path.includes('wordpress') || path.includes('wp') || path.includes('social') || path.includes('api')) return 'destinations';
+    if (path.includes('reports') || path.includes('logs') || path.includes('distributions')) return 'reports';
+    if (path.includes('settings') || path.includes('d1') || path.includes('database') || path.includes('users') || path.includes('prompts')) return 'settings';
+    return 'dashboard';
   };
 
-  const [activeTab, setActiveTabState] = useState<'news' | 'sources' | 'd1' | 'settings'>(getTabFromPath);
+  const [activeTab, setActiveTabState] = useState<MainAppTab>(getTabFromPath);
+  const [activeSubTab, setActiveSubTab] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     setActiveTabState(getTabFromPath());
   }, [location.pathname]);
 
-  const setActiveTab = (tab: 'news' | 'sources' | 'd1' | 'settings') => {
+  const handleNavigateTab = (tab: MainAppTab, subTab?: string) => {
     setActiveTabState(tab);
+    if (subTab) setActiveSubTab(subTab);
     navigate(`/app/${tab}`);
   };
 
@@ -115,37 +120,117 @@ export const AppDashboard: React.FC = () => {
     refreshAllData();
   }, []);
 
-  // Add Source via POST /api/sources
-  const handleAddSource = async (
-    name: string,
-    url: string,
-    language: string = 'en',
-    category: string = 'general',
-    selector?: string,
-    scrape_limit: number = 10,
-    is_active: boolean = true
-  ): Promise<{ success: boolean; data?: any; error?: string }> => {
+  // Handlers
+  const handleTriggerScraper = async () => {
+    setIsTriggeringScraper(true);
+    try {
+      const res = await fetch('/api/trigger-scraper', { method: 'POST' });
+      if (res.ok) {
+        refreshAllData();
+      }
+    } catch (e) {
+      console.error('Error triggering scraper:', e);
+    } finally {
+      setIsTriggeringScraper(false);
+    }
+  };
+
+  const handleTriggerTranslator = async () => {
+    setIsTriggeringTranslator(true);
+    try {
+      const res = await fetch('/api/trigger-translator', { method: 'POST' });
+      if (res.ok) {
+        refreshAllData();
+      }
+    } catch (e) {
+      console.error('Error triggering translator:', e);
+    } finally {
+      setIsTriggeringTranslator(false);
+    }
+  };
+
+  const handleTranslateArticle = async (id: number, model?: string) => {
+    try {
+      const res = await fetch(`/api/news/${id}/translate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchNews();
+        fetchStats();
+        return data.data;
+      }
+    } catch (e) {
+      console.error(`Error translating article ${id}:`, e);
+    }
+    return null;
+  };
+
+  const handleDeleteArticle = async (id: number) => {
+    if (!confirm('آیا از حذف این خبر اطمینان دارید؟')) return;
+    try {
+      const res = await fetch(`/api/news/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setNews((prev) => prev.filter((n) => n.id !== id));
+        fetchStats();
+      }
+    } catch (e) {
+      console.error(`Error deleting article ${id}:`, e);
+    }
+  };
+
+  const handleCreateCustomArticle = async (title: string, content: string, model?: string) => {
+    try {
+      const res = await fetch('/api/news/custom', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, content, model }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        refreshAllData();
+        return true;
+      }
+    } catch (e) {
+      console.error('Error creating custom article:', e);
+    }
+    return false;
+  };
+
+  const handleAddSource = async (name: string, url: string, category?: string) => {
     try {
       const res = await fetch('/api/sources', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, url, language, category, selector, scrape_limit, is_active }),
+        body: JSON.stringify({ name, url, category }),
       });
-
-      const json = await res.json();
-      if (res.ok && json.success) {
+      const data = await res.json();
+      if (data.success) {
         fetchSources();
         fetchStats();
-        return { success: true, data: json.data };
+        return true;
       }
-      return { success: false, error: json.error || 'خطا در ثبت منبع جدید' };
-    } catch (e: any) {
+    } catch (e) {
       console.error('Error adding source:', e);
-      return { success: false, error: e.message || 'خطا در برقراری ارتباط با سرور' };
+    }
+    return false;
+  };
+
+  const handleDeleteSource = async (id: number) => {
+    if (!confirm('آیا از حذف این منبع خبری اطمینان دارید؟')) return;
+    try {
+      const res = await fetch(`/api/sources/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setSources((prev) => prev.filter((s) => s.id !== id));
+        fetchStats();
+      }
+    } catch (e) {
+      console.error(`Error deleting source ${id}:`, e);
     }
   };
 
-  // Update Source via PUT /api/sources/:id
   const handleUpdateSource = async (id: number, data: Partial<SourceItem>) => {
     try {
       const res = await fetch(`/api/sources/${id}`, {
@@ -159,13 +244,13 @@ export const AppDashboard: React.FC = () => {
         return true;
       }
     } catch (e) {
-      console.error('Error updating source:', e);
+      console.error(`Error updating source ${id}:`, e);
     }
     return false;
   };
 
-  // Bulk Delete Sources via POST /api/sources/bulk-delete
   const handleBulkDeleteSources = async (ids: number[]) => {
+    if (!confirm(`آیا از حذف گروهی ${ids.length} منبع خبر اطمینان دارید؟`)) return false;
     try {
       const res = await fetch('/api/sources/bulk-delete', {
         method: 'POST',
@@ -174,7 +259,8 @@ export const AppDashboard: React.FC = () => {
       });
       const json = await res.json();
       if (json.success) {
-        refreshAllData();
+        fetchSources();
+        fetchStats();
         return true;
       }
     } catch (e) {
@@ -183,13 +269,12 @@ export const AppDashboard: React.FC = () => {
     return false;
   };
 
-  // Bulk Status Toggle via POST /api/sources/bulk-status
-  const handleBulkToggleStatus = async (ids: number[], is_active: boolean) => {
+  const handleBulkToggleStatus = async (ids: number[], active: boolean) => {
     try {
-      const res = await fetch('/api/sources/bulk-status', {
+      const res = await fetch('/api/sources/bulk-toggle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids, is_active }),
+        body: JSON.stringify({ ids, is_active: active }),
       });
       const json = await res.json();
       if (json.success) {
@@ -202,86 +287,18 @@ export const AppDashboard: React.FC = () => {
     return false;
   };
 
-  // Delete Single Source via DELETE /api/sources/:id
-  const handleDeleteSource = async (id: number) => {
-    try {
-      const res = await fetch(`/api/sources/${id}`, { method: 'DELETE' });
-      const json = await res.json();
-      if (json.success) {
-        refreshAllData();
-      }
-    } catch (e) {
-      console.error('Error deleting source:', e);
-    }
-  };
-
-  // Delete Article via DELETE /api/news/:id
-  const handleDeleteArticle = async (id: number) => {
-    try {
-      const res = await fetch(`/api/news/${id}`, { method: 'DELETE' });
-      const json = await res.json();
-      if (json.success) {
-        refreshAllData();
-      }
-    } catch (e) {
-      console.error('Error deleting article:', e);
-    }
-  };
-
-  // Translate or Re-translate single article via POST /api/news/:id/translate
-  const handleTranslateArticle = async (id: number, model?: string) => {
-    try {
-      const res = await fetch(`/api/news/${id}/translate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model }),
-      });
-      const json = await res.json();
-      if (json.success) {
-        refreshAllData();
-        return json.data;
-      }
-    } catch (e) {
-      console.error('Error translating single article:', e);
-    }
-    return null;
-  };
-
-  // Create custom article via POST /api/news/custom
-  const handleCreateCustomArticle = async (title: string, content: string, model?: string) => {
-    try {
-      const res = await fetch('/api/news/custom', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, content, model }),
-      });
-      const json = await res.json();
-      if (res.ok && json.success) {
-        refreshAllData();
-        return true;
-      }
-    } catch (e) {
-      console.error('Error creating custom article:', e);
-    }
-    return false;
-  };
-
-  // Scrape single source via POST /api/sources/:id/scrape
   const handleScrapeSource = async (id: number) => {
     try {
       const res = await fetch(`/api/sources/${id}/scrape`, { method: 'POST' });
       const json = await res.json();
       if (json.success) {
         refreshAllData();
-        return json.data;
       }
     } catch (e) {
-      console.error('Error scraping source:', e);
+      console.error(`Error scraping source ${id}:`, e);
     }
-    return null;
   };
 
-  // Test RSS feed connection via POST /api/sources/test-feed
   const handleTestFeed = async (url: string) => {
     try {
       const res = await fetch('/api/sources/test-feed', {
@@ -289,57 +306,19 @@ export const AppDashboard: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
-      const json = await res.json();
-      if (res.ok && json.success) {
-        return json.data;
-      }
+      return await res.json();
     } catch (e) {
-      console.error('Error testing RSS feed:', e);
+      console.error('Error testing feed:', e);
+      return { success: false, error: 'خطا در ارتباط با سرور' };
     }
-    return null;
   };
 
-  // Trigger Scraper
-  const handleTriggerScraper = async () => {
-    setIsTriggeringScraper(true);
-    try {
-      const res = await fetch('/api/trigger-scraper', { method: 'POST' });
-      const json = await res.json();
-      if (json.success) {
-        refreshAllData();
-        return json.data;
-      }
-    } catch (e) {
-      console.error('Error triggering scraper:', e);
-    } finally {
-      setIsTriggeringScraper(false);
-    }
-    return null;
-  };
-
-  // Trigger Translator
-  const handleTriggerTranslator = async () => {
-    setIsTriggeringTranslator(true);
-    try {
-      const res = await fetch('/api/trigger-translator', { method: 'POST' });
-      const json = await res.json();
-      if (json.success) {
-        refreshAllData();
-        return json.data;
-      }
-    } catch (e) {
-      console.error('Error triggering translator:', e);
-    } finally {
-      setIsTriggeringTranslator(false);
-    }
-    return null;
-  };
-
-  // Reset / Purge Database via POST /api/database/reset
   const handleResetDatabase = async (options: {
     clearSources?: boolean;
     clearArticles?: boolean;
     clearTranslations?: boolean;
+    clearApprovedTranslations?: boolean;
+    clearPendingTranslations?: boolean;
     clearLogs?: boolean;
     target?: string;
     reseed?: boolean;
@@ -361,40 +340,41 @@ export const AppDashboard: React.FC = () => {
     return null;
   };
 
+  const pendingCount = news.filter((n) => n.translation_status === 'pending' || !n.translated_title).length;
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dir-rtl font-sans antialiased selection:bg-orange-500 selection:text-white">
-      {/* Navigation Header */}
+      {/* Main Navigation Header */}
       <Navbar
         activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        setActiveTab={(t) => handleNavigateTab(t)}
         onRefreshAll={refreshAllData}
         isRefreshing={loadingNews || loadingSources || loadingStats}
         onGoHome={() => navigate('/')}
+        pendingCount={pendingCount}
       />
 
-      {/* Main Container */}
+      {/* Main App Canvas */}
       <main className="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Top Summary Metrics */}
-        <StatsOverview stats={stats} loading={loadingStats} />
-
-        {/* Tab Content */}
-        {activeTab === 'news' && (
-          <NewsFeedTab
+        {/* Tab 1: 🏠 Dashboard */}
+        {activeTab === 'dashboard' && (
+          <DashboardTab
+            stats={stats}
+            loadingStats={loadingStats}
             news={news}
-            loading={loadingNews}
-            onRefresh={fetchNews}
+            sources={sources}
             onTriggerScraper={handleTriggerScraper}
             onTriggerTranslator={handleTriggerTranslator}
-            onTranslateArticle={handleTranslateArticle}
-            onDeleteArticle={handleDeleteArticle}
-            onCreateCustomArticle={handleCreateCustomArticle}
+            onNavigateTab={handleNavigateTab}
             isTriggeringScraper={isTriggeringScraper}
             isTriggeringTranslator={isTriggeringTranslator}
+            onTranslateArticle={handleTranslateArticle}
           />
         )}
 
+        {/* Tab 2: 📥 Input Sources */}
         {activeTab === 'sources' && (
-          <SourcesTab
+          <InputSourcesTab
             sources={sources}
             loading={loadingSources}
             onAddSource={handleAddSource}
@@ -405,11 +385,57 @@ export const AppDashboard: React.FC = () => {
             onScrapeSource={handleScrapeSource}
             onTestFeed={handleTestFeed}
             onRefresh={fetchSources}
+            initialSubTab={(activeSubTab as any) || 'rss'}
           />
         )}
 
-        {activeTab === 'd1' && (
-          <D1ManagerTab
+        {/* Tab 3: 📝 Content Desk */}
+        {activeTab === 'content-desk' && (
+          <ContentDeskTab
+            news={news}
+            loading={loadingNews}
+            onRefresh={fetchNews}
+            onTriggerScraper={handleTriggerScraper}
+            onTriggerTranslator={handleTriggerTranslator}
+            onTranslateArticle={handleTranslateArticle}
+            onDeleteArticle={handleDeleteArticle}
+            onCreateCustomArticle={handleCreateCustomArticle}
+            isTriggeringScraper={isTriggeringScraper}
+            isTriggeringTranslator={isTriggeringTranslator}
+            initialSubTab={(activeSubTab as any) || 'archive'}
+          />
+        )}
+
+        {/* Tab 4: 📤 Destinations & Distribution */}
+        {activeTab === 'destinations' && (
+          <DestinationsTab
+            onRefreshAll={refreshAllData}
+            initialSubTab={(activeSubTab as any) || 'wordpress'}
+          />
+        )}
+
+        {/* Tab 5: 📊 Reports & System Logs */}
+        {activeTab === 'reports' && (
+          <ReportsLogsTab
+            onTriggerScraper={handleTriggerScraper}
+            onTriggerTranslator={handleTriggerTranslator}
+            onResetDatabase={handleResetDatabase}
+            isTriggeringScraper={isTriggeringScraper}
+            isTriggeringTranslator={isTriggeringTranslator}
+            workerFiles={workerFiles}
+            initialSubTab={(activeSubTab as any) || 'distributions'}
+          />
+        )}
+
+        {/* Tab 6: ⚙️ System & AI Settings */}
+        {activeTab === 'settings' && (
+          <SystemAISettingsTab
+            onTriggerScraper={handleTriggerScraper}
+            onTriggerTranslator={handleTriggerTranslator}
+            onResetDatabase={handleResetDatabase}
+            isTriggeringScraper={isTriggeringScraper}
+            isTriggeringTranslator={isTriggeringTranslator}
+            workerFiles={workerFiles}
             sources={sources}
             news={news}
             stats={stats}
@@ -418,17 +444,7 @@ export const AppDashboard: React.FC = () => {
             onUpdateSource={handleUpdateSource}
             onDeleteSource={handleDeleteSource}
             onDeleteArticle={handleDeleteArticle}
-          />
-        )}
-
-        {activeTab === 'settings' && (
-          <SettingsTab
-            onTriggerScraper={handleTriggerScraper}
-            onTriggerTranslator={handleTriggerTranslator}
-            onResetDatabase={handleResetDatabase}
-            isTriggeringScraper={isTriggeringScraper}
-            isTriggeringTranslator={isTriggeringTranslator}
-            workerFiles={workerFiles}
+            initialSubTab={(activeSubTab as any) || 'prompts'}
           />
         )}
       </main>

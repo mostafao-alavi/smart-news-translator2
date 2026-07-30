@@ -565,15 +565,22 @@ app.post('/api/sources/bulk-delete', (req, res) => {
       return res.status(400).json({ success: false, data: null, error: 'لیست ID ها نامعتبر است' });
     }
 
+    const numIds = ids.map((id: any) => Number(id));
     const initialLen = sources.length;
-    for (const id of ids) {
-      const idx = sources.findIndex((s) => s.id === id);
-      if (idx !== -1) sources.splice(idx, 1);
-    }
 
+    sources = sources.filter((s) => !numIds.includes(Number(s.id)));
+
+    // Cascade delete associated articles and translations
+    const deletedArticles = articles.filter((a) => numIds.includes(Number(a.source_id)));
+    articles = articles.filter((a) => !numIds.includes(Number(a.source_id)));
+
+    const deletedArticleIds = new Set(deletedArticles.map((a) => Number(a.id)));
+    translations = translations.filter((t) => !deletedArticleIds.has(Number(t.article_id)));
+
+    const deletedCount = initialLen - sources.length;
     res.json({
       success: true,
-      data: { message: `تعداد ${initialLen - sources.length} منبع حذف گردید`, deletedIds: ids },
+      data: { message: `تعداد ${deletedCount} منبع با موفقیت حذف گردید`, deletedIds: ids, deletedCount },
       error: null,
     });
   } catch (err: any) {
@@ -589,9 +596,10 @@ app.post('/api/sources/bulk-status', (req, res) => {
       return res.status(400).json({ success: false, data: null, error: 'لیست ID ها نامعتبر است' });
     }
 
+    const numIds = ids.map((id: any) => Number(id));
     const val = is_active ? 1 : 0;
     sources.forEach((s) => {
-      if (ids.includes(s.id!)) {
+      if (numIds.includes(Number(s.id))) {
         s.is_active = val;
       }
     });
@@ -1076,18 +1084,39 @@ app.post('/api/sources/:id/scrape', async (req, res) => {
 // POST /api/database/reset & /api/reset-db - Full or Selective Database Reset
 const handleDatabaseReset = (req: any, res: any) => {
   try {
-    const { clearSources, clearArticles, clearTranslations, clearLogs, target, reseed } = req.body || {};
-    const isAll = target === 'all' || (!clearSources && !clearArticles && !clearTranslations && !clearLogs);
+    const {
+      clearSources,
+      clearArticles,
+      clearTranslations,
+      clearApprovedTranslations,
+      clearPendingTranslations,
+      clearLogs,
+      target,
+      reseed
+    } = req.body || {};
+
+    const isAll = target === 'all' || (
+      !clearSources &&
+      !clearArticles &&
+      !clearTranslations &&
+      !clearApprovedTranslations &&
+      !clearPendingTranslations &&
+      !clearLogs
+    );
 
     const shouldSources = isAll || !!clearSources;
     const shouldArticles = isAll || !!clearArticles;
     const shouldTranslations = isAll || !!clearTranslations;
+    const shouldApprovedTranslations = !shouldTranslations && !!clearApprovedTranslations;
+    const shouldPendingTranslations = !shouldTranslations && !!clearPendingTranslations;
     const shouldLogs = isAll || !!clearLogs;
 
     let clearedInfo = {
       sourcesCount: 0,
       articlesCount: 0,
       translationsCount: 0,
+      approvedTranslationsCount: 0,
+      pendingTranslationsCount: 0,
       logsCount: 0,
     };
 
@@ -1097,6 +1126,22 @@ const handleDatabaseReset = (req: any, res: any) => {
       translationHistory = [];
       nextTranslationId = 1;
       nextHistoryId = 1;
+    } else {
+      if (shouldApprovedTranslations) {
+        const approvedList = translations.filter((t) => t.approval_status === 'approved' || !t.approval_status);
+        clearedInfo.approvedTranslationsCount = approvedList.length;
+        translations = translations.filter((t) => t.approval_status === 'pending' || t.approval_status === 'rejected');
+      }
+      if (shouldPendingTranslations) {
+        const pendingList = translations.filter((t) => t.approval_status === 'pending');
+        clearedInfo.pendingTranslationsCount = pendingList.length;
+        translations = translations.filter((t) => t.approval_status !== 'pending');
+        articles.forEach((a) => {
+          if (a.translation_status === 'pending' || a.translation_status === 'processing') {
+            a.translation_status = 'failed';
+          }
+        });
+      }
     }
 
     if (shouldArticles) {
@@ -1138,6 +1183,8 @@ const handleDatabaseReset = (req: any, res: any) => {
           sources: shouldSources,
           articles: shouldArticles,
           translations: shouldTranslations,
+          approvedTranslations: shouldApprovedTranslations,
+          pendingTranslations: shouldPendingTranslations,
           logs: shouldLogs,
         },
         clearedInfo,

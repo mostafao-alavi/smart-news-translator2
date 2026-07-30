@@ -12,8 +12,12 @@ export default function App() {
 
         {/* Dashboard Routes */}
         <Route path="/app/*" element={<AppDashboard />} />
+        <Route path="/dashboard" element={<AppDashboard />} />
         <Route path="/news" element={<AppDashboard />} />
+        <Route path="/content-desk" element={<AppDashboard />} />
         <Route path="/sources" element={<AppDashboard />} />
+        <Route path="/destinations" element={<AppDashboard />} />
+        <Route path="/reports" element={<AppDashboard />} />
         <Route path="/d1" element={<AppDashboard />} />
         <Route path="/database" element={<AppDashboard />} />
         <Route path="/distributions" element={<AppDashboard />} />
@@ -25,4 +29,3 @@ export default function App() {
     </BrowserRouter>
   );
 }
-

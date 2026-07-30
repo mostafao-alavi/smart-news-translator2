@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Play,
   Terminal,
@@ -23,7 +23,12 @@ import {
   AlertTriangle,
   XCircle,
   History,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Search,
+  Download,
+  Filter,
+  Radio,
+  Layers
 } from 'lucide-react';
 import { WorkerFileInfo, ExecutionLogItem, SystemEventItem } from '../types/client';
 
@@ -119,16 +124,24 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [lastTranslatorResult, setLastTranslatorResult] = useState<any>(null);
   const [isPruning, setIsPruning] = useState<boolean>(false);
 
-  // Full Database Reset State
+  // Full & Granular Database Reset State
   const [resetOptions, setResetOptions] = useState({
-    clearSources: true,
-    clearArticles: true,
-    clearTranslations: true,
-    clearLogs: true,
+    clearSources: false,
+    clearArticles: false,
+    clearApprovedTranslations: false,
+    clearPendingTranslations: false,
+    clearLogs: false,
   });
   const [showResetConfirmModal, setShowResetConfirmModal] = useState<boolean>(false);
   const [isResetting, setIsResetting] = useState<boolean>(false);
   const [resetSuccessMessage, setResetSuccessMessage] = useState<string | null>(null);
+
+  // Console Log Debugging & Optimization State
+  const [logFilter, setLogFilter] = useState<'all' | 'errors' | 'success' | 'routines'>('all');
+  const [logSearchQuery, setLogSearchQuery] = useState<string>('');
+  const [copiedConsoleLogs, setCopiedConsoleLogs] = useState<boolean>(false);
+  const [autoScrollLogs, setAutoScrollLogs] = useState<boolean>(true);
+  const consoleEndRef = useRef<HTMLDivElement>(null);
 
   // Execution Logs and System Events from D1
   const [executionLogs, setExecutionLogs] = useState<ExecutionLogItem[]>([]);
@@ -146,6 +159,12 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [selectedFile, setSelectedFile] = useState<string>('src/api/routes.ts');
   const [fileContent, setFileContent] = useState<string>('');
   const [loadingCode, setLoadingCode] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (autoScrollLogs && consoleEndRef.current) {
+      consoleEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [logs, autoScrollLogs]);
 
   const fetchD1Logs = async () => {
     setLoadingLogs(true);
@@ -187,6 +206,34 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const addLog = (msg: string) => {
     setLogs((prev) => [`[${new Date().toLocaleTimeString('fa-IR')}] ${msg}`, ...prev]);
   };
+
+  const handleCopyConsoleLogs = () => {
+    const text = logs.join('\n');
+    navigator.clipboard.writeText(text);
+    setCopiedConsoleLogs(true);
+    setTimeout(() => setCopiedConsoleLogs(false), 2000);
+  };
+
+  const handleDownloadConsoleLogs = () => {
+    const text = logs.join('\n');
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `system-console-logs-${new Date().toISOString().slice(0, 10)}.log`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const filteredLogs = logs.filter((log) => {
+    const matchesSearch = logSearchQuery ? log.toLowerCase().includes(logSearchQuery.toLowerCase()) : true;
+    if (!matchesSearch) return false;
+
+    if (logFilter === 'errors') return log.includes('❌') || log.toLowerCase().includes('error') || log.toLowerCase().includes('fail');
+    if (logFilter === 'success') return log.includes('✅') || log.toLowerCase().includes('success');
+    if (logFilter === 'routines') return log.includes('🚀') || log.includes('🤖') || log.includes('🧹') || log.includes('⚠️');
+    return true;
+  });
 
   const handleRunScraper = async () => {
     addLog('🚀 Starting manual execution of scraper(env)...');
@@ -234,10 +281,57 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     }
   };
 
+  // Direct single reset for one specific category
+  const handleSingleQuickReset = async (
+    key: 'clearSources' | 'clearArticles' | 'clearApprovedTranslations' | 'clearPendingTranslations' | 'clearLogs',
+    title: string
+  ) => {
+    if (!confirm(`آیا از پاکسازی مستقیم داده‌های "${title}" اطمینان دارید؟ این عملیات غیرقابل بازگشت است.`)) return;
+
+    setIsResetting(true);
+    setResetSuccessMessage(null);
+    addLog(`⚠️ Performing quick purge for: ${title}...`);
+
+    const options = {
+      clearSources: key === 'clearSources',
+      clearArticles: key === 'clearArticles',
+      clearApprovedTranslations: key === 'clearApprovedTranslations',
+      clearPendingTranslations: key === 'clearPendingTranslations',
+      clearLogs: key === 'clearLogs',
+    };
+
+    try {
+      let res;
+      if (onResetDatabase) {
+        res = await onResetDatabase(options);
+      } else {
+        const response = await fetch('/api/database/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(options),
+        });
+        const json = await response.json();
+        if (json.success) res = json.data;
+      }
+
+      if (res) {
+        addLog(`✅ Quick purge completed for "${title}".`);
+        setResetSuccessMessage(`بخش "${title}" با موفقیت از دیتابیس پاکسازی گردید.`);
+        fetchD1Logs();
+      } else {
+        addLog(`❌ Quick purge failed for "${title}".`);
+      }
+    } catch (err: any) {
+      addLog(`❌ Reset error: ${err.message}`);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   const handleExecuteReset = async (reseed: boolean = false) => {
     setIsResetting(true);
     setResetSuccessMessage(null);
-    addLog(`⚠️ Performing Database Purge... (Sources: ${resetOptions.clearSources}, Articles: ${resetOptions.clearArticles}, Translations: ${resetOptions.clearTranslations}, Logs: ${resetOptions.clearLogs}, Reseed: ${reseed})`);
+    addLog(`⚠️ Performing Database Purge... (Sources: ${resetOptions.clearSources}, Articles: ${resetOptions.clearArticles}, Approved: ${resetOptions.clearApprovedTranslations}, Pending: ${resetOptions.clearPendingTranslations}, Logs: ${resetOptions.clearLogs}, Reseed: ${reseed})`);
 
     try {
       let res;
@@ -245,7 +339,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         res = await onResetDatabase({
           clearSources: resetOptions.clearSources,
           clearArticles: resetOptions.clearArticles,
-          clearTranslations: resetOptions.clearTranslations,
+          clearApprovedTranslations: resetOptions.clearApprovedTranslations,
+          clearPendingTranslations: resetOptions.clearPendingTranslations,
           clearLogs: resetOptions.clearLogs,
           reseed,
         });
@@ -256,7 +351,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           body: JSON.stringify({
             clearSources: resetOptions.clearSources,
             clearArticles: resetOptions.clearArticles,
-            clearTranslations: resetOptions.clearTranslations,
+            clearApprovedTranslations: resetOptions.clearApprovedTranslations,
+            clearPendingTranslations: resetOptions.clearPendingTranslations,
             clearLogs: resetOptions.clearLogs,
             reseed,
           }),
@@ -267,7 +363,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
       if (res) {
         addLog(`✅ Database purge completed successfully.`);
-        setResetSuccessMessage('حذف و پاکسازی تمامی داده‌های انتخاب شده از دیتابیس D1 با موفقیت انجام شد.');
+        setResetSuccessMessage('حذف و پاکسازی بخش‌های انتخاب‌شده از دیتابیس D1 با موفقیت انجام شد.');
         fetchD1Logs();
       } else {
         addLog(`❌ Database purge failed.`);
@@ -458,19 +554,19 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         {/* Database Purge & Complete Reset Panel */}
         <div className="bg-rose-50/40 border border-rose-200/80 rounded-xl p-5 shadow-xs space-y-4 mt-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-rose-100 pb-3">
-            <div className="flex items-center gap-2 ">
+            <div className="flex items-center gap-2">
               <div className="bg-rose-100 text-rose-700 p-2.5 rounded-xl border border-rose-200">
                 <Trash2 className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                  <span>پاکسازی و بازنشانی کلی دیتابیس D1 (Database Reset)</span>
+                  <span>پاکسازی و بازنشانی دیتابیس D1</span>
                   <span className="bg-rose-100 text-rose-700 text-xs px-2 py-0.5 rounded font-medium border border-rose-200">
-                    مدیریت کلی داده‌ها
+                    کلیدهای تفکیک‌شده
                   </span>
                 </h3>
                 <p className="text-xs text-gray-600 mt-0.5">
-                  حذف یکجا یا تفکیک‌شده داده‌های ذخیره‌شده شامل منابع خبری، اخبار، ترجمه‌ها و لاگ‌های سیستم
+                  امکان پاکسازی جداگانه و مستقیم هر یک از داده‌ها شامل منابع خبری، کل اخبار، ترجمه‌های موفق و در صف پردازش
                 </p>
               </div>
             </div>
@@ -484,89 +580,183 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
               <button
                 onClick={() => setResetSuccessMessage(null)}
-                className="text-emerald-600 hover:text-emerald-800"
+                className="text-emerald-600 hover:text-emerald-800 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            <label className={`flex items-center gap-2  p-3 rounded-xl border cursor-pointer transition-all ${
-              resetOptions.clearSources ? 'bg-white border-rose-300 shadow-2xs' : 'bg-gray-50 border-gray-200 opacity-60'
+          {/* Granular Cards with Direct Reset Buttons & Checkboxes */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {/* 1. Sources */}
+            <div className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between gap-3 ${
+              resetOptions.clearSources ? 'bg-white border-rose-300 shadow-2xs ring-1 ring-rose-200' : 'bg-white/80 border-gray-200'
             }`}>
-              <input
-                type="checkbox"
-                checked={resetOptions.clearSources}
-                onChange={(e) => setResetOptions({ ...resetOptions, clearSources: e.target.checked })}
-                className="w-4 h-4 text-rose-600 rounded border-gray-300 focus:ring-rose-500"
-              />
-              <div>
-                <div className="text-xs font-bold text-gray-900">منابع خبری فعال</div>
-                <div className="text-[10px] text-gray-500">جدول sources (فیدهای RSS)</div>
+              <div className="flex items-start justify-between gap-2">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={resetOptions.clearSources}
+                    onChange={(e) => setResetOptions({ ...resetOptions, clearSources: e.target.checked })}
+                    className="w-4 h-4 text-rose-600 rounded border-gray-300 focus:ring-rose-500"
+                  />
+                  <div>
+                    <div className="text-xs font-bold text-gray-900">منابع خبری</div>
+                    <div className="text-[10px] text-gray-500">جدول sources (RSS)</div>
+                  </div>
+                </label>
+                <Radio className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
               </div>
-            </label>
+              <button
+                onClick={() => handleSingleQuickReset('clearSources', 'منابع خبری')}
+                disabled={isResetting}
+                className="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] py-1.5 px-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>حذف منابع خبری</span>
+              </button>
+            </div>
 
-            <label className={`flex items-center gap-2  p-3 rounded-xl border cursor-pointer transition-all ${
-              resetOptions.clearArticles ? 'bg-white border-rose-300 shadow-2xs' : 'bg-gray-50 border-gray-200 opacity-60'
+            {/* 2. All News / Articles */}
+            <div className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between gap-3 ${
+              resetOptions.clearArticles ? 'bg-white border-rose-300 shadow-2xs ring-1 ring-rose-200' : 'bg-white/80 border-gray-200'
             }`}>
-              <input
-                type="checkbox"
-                checked={resetOptions.clearArticles}
-                onChange={(e) => setResetOptions({ ...resetOptions, clearArticles: e.target.checked })}
-                className="w-4 h-4 text-rose-600 rounded border-gray-300 focus:ring-rose-500"
-              />
-              <div>
-                <div className="text-xs font-bold text-gray-900">اخبار و صف پردازش</div>
-                <div className="text-[10px] text-gray-500">اخبار دریافت‌شده + اخبار pending</div>
+              <div className="flex items-start justify-between gap-2">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={resetOptions.clearArticles}
+                    onChange={(e) => setResetOptions({ ...resetOptions, clearArticles: e.target.checked })}
+                    className="w-4 h-4 text-rose-600 rounded border-gray-300 focus:ring-rose-500"
+                  />
+                  <div>
+                    <div className="text-xs font-bold text-gray-900">کل اخبار</div>
+                    <div className="text-[10px] text-gray-500">جدول articles</div>
+                  </div>
+                </label>
+                <FileSpreadsheet className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
               </div>
-            </label>
+              <button
+                onClick={() => handleSingleQuickReset('clearArticles', 'کل اخبار')}
+                disabled={isResetting}
+                className="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] py-1.5 px-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>حذف کل اخبار</span>
+              </button>
+            </div>
 
-            <label className={`flex items-center gap-2  p-3 rounded-xl border cursor-pointer transition-all ${
-              resetOptions.clearTranslations ? 'bg-white border-rose-300 shadow-2xs' : 'bg-gray-50 border-gray-200 opacity-60'
+            {/* 3. Approved Translations */}
+            <div className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between gap-3 ${
+              resetOptions.clearApprovedTranslations ? 'bg-white border-rose-300 shadow-2xs ring-1 ring-rose-200' : 'bg-white/80 border-gray-200'
             }`}>
-              <input
-                type="checkbox"
-                checked={resetOptions.clearTranslations}
-                onChange={(e) => setResetOptions({ ...resetOptions, clearTranslations: e.target.checked })}
-                className="w-4 h-4 text-rose-600 rounded border-gray-300 focus:ring-rose-500"
-              />
-              <div>
-                <div className="text-xs font-bold text-gray-900">ترجمه‌های هوشمند AI</div>
-                <div className="text-[10px] text-gray-500">ترجمه‌های انجام‌شده + تاریخچه</div>
+              <div className="flex items-start justify-between gap-2">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={resetOptions.clearApprovedTranslations}
+                    onChange={(e) => setResetOptions({ ...resetOptions, clearApprovedTranslations: e.target.checked })}
+                    className="w-4 h-4 text-rose-600 rounded border-gray-300 focus:ring-rose-500"
+                  />
+                  <div>
+                    <div className="text-xs font-bold text-emerald-800">ترجمه‌های موفق</div>
+                    <div className="text-[10px] text-emerald-600">approved translations</div>
+                  </div>
+                </label>
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
               </div>
-            </label>
+              <button
+                onClick={() => handleSingleQuickReset('clearApprovedTranslations', 'ترجمه‌های موفق')}
+                disabled={isResetting}
+                className="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[11px] py-1.5 px-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3 h-3 text-emerald-600" />
+                <span>حذف ترجمه‌های موفق</span>
+              </button>
+            </div>
 
-            <label className={`flex items-center gap-2  p-3 rounded-xl border cursor-pointer transition-all ${
-              resetOptions.clearLogs ? 'bg-white border-rose-300 shadow-2xs' : 'bg-gray-50 border-gray-200 opacity-60'
+            {/* 4. Pending Queue */}
+            <div className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between gap-3 ${
+              resetOptions.clearPendingTranslations ? 'bg-white border-rose-300 shadow-2xs ring-1 ring-rose-200' : 'bg-white/80 border-gray-200'
             }`}>
-              <input
-                type="checkbox"
-                checked={resetOptions.clearLogs}
-                onChange={(e) => setResetOptions({ ...resetOptions, clearLogs: e.target.checked })}
-                className="w-4 h-4 text-rose-600 rounded border-gray-300 focus:ring-rose-500"
-              />
-              <div>
-                <div className="text-xs font-bold text-gray-900">لاگ‌ها و رویدادهای سیستم</div>
-                <div className="text-[10px] text-gray-500">رویدادها + execution_logs</div>
+              <div className="flex items-start justify-between gap-2">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={resetOptions.clearPendingTranslations}
+                    onChange={(e) => setResetOptions({ ...resetOptions, clearPendingTranslations: e.target.checked })}
+                    className="w-4 h-4 text-rose-600 rounded border-gray-300 focus:ring-rose-500"
+                  />
+                  <div>
+                    <div className="text-xs font-bold text-amber-800">در صف پردازش</div>
+                    <div className="text-[10px] text-amber-600">pending translations</div>
+                  </div>
+                </label>
+                <Clock className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
               </div>
-            </label>
+              <button
+                onClick={() => handleSingleQuickReset('clearPendingTranslations', 'در صف پردازش')}
+                disabled={isResetting}
+                className="w-full bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-[11px] py-1.5 px-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3 h-3 text-amber-600" />
+                <span>حذف صف پردازش</span>
+              </button>
+            </div>
+
+            {/* 5. Logs & System Events */}
+            <div className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between gap-3 ${
+              resetOptions.clearLogs ? 'bg-white border-rose-300 shadow-2xs ring-1 ring-rose-200' : 'bg-white/80 border-gray-200'
+            }`}>
+              <div className="flex items-start justify-between gap-2">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={resetOptions.clearLogs}
+                    onChange={(e) => setResetOptions({ ...resetOptions, clearLogs: e.target.checked })}
+                    className="w-4 h-4 text-rose-600 rounded border-gray-300 focus:ring-rose-500"
+                  />
+                  <div>
+                    <div className="text-xs font-bold text-gray-900">لاگ‌ها و رویدادها</div>
+                    <div className="text-[10px] text-gray-500">execution_logs</div>
+                  </div>
+                </label>
+                <History className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+              </div>
+              <button
+                onClick={() => handleSingleQuickReset('clearLogs', 'لاگ‌ها و رویدادهای سیستم')}
+                disabled={isResetting}
+                className="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] py-1.5 px-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-3 h-3" />
+                <span>حذف لاگ‌های سیستم</span>
+              </button>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-rose-100">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-rose-100">
+            <div className="flex items-center gap-2 text-xs text-gray-600">
+              <span>انتخاب سریع:</span>
               <button
-                onClick={() => setResetOptions({ clearSources: true, clearArticles: true, clearTranslations: true, clearLogs: true })}
-                className="text-[11px] text-gray-600 hover:text-gray-900 underline"
+                onClick={() => setResetOptions({ clearSources: true, clearArticles: true, clearApprovedTranslations: true, clearPendingTranslations: true, clearLogs: true })}
+                className="text-[11px] text-rose-600 hover:text-rose-800 font-medium underline cursor-pointer"
               >
-                انتخاب همه موارد
+                انتخاب همه ۵ مورد
               </button>
               <span className="text-gray-300">•</span>
               <button
-                onClick={() => setResetOptions({ clearSources: false, clearArticles: true, clearTranslations: true, clearLogs: false })}
-                className="text-[11px] text-gray-600 hover:text-gray-900 underline"
+                onClick={() => setResetOptions({ clearSources: false, clearArticles: false, clearApprovedTranslations: true, clearPendingTranslations: true, clearLogs: false })}
+                className="text-[11px] text-gray-600 hover:text-gray-900 underline cursor-pointer"
               >
-                فقط اخبار و ترجمه‌ها
+                فقط ترجمه‌ها (موفق + صف)
+              </button>
+              <span className="text-gray-300">•</span>
+              <button
+                onClick={() => setResetOptions({ clearSources: false, clearArticles: false, clearApprovedTranslations: false, clearPendingTranslations: false, clearLogs: false })}
+                className="text-[11px] text-gray-500 hover:text-gray-800 underline cursor-pointer"
+              >
+                لغو همه انتخاب‌ها
               </button>
             </div>
 
@@ -574,7 +764,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <button
                 onClick={() => handleExecuteReset(true)}
                 disabled={isResetting}
-                className="bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 text-xs px-3.5 py-2 rounded-xl font-medium transition-all shadow-2xs flex items-center gap-2.5"
+                className="bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 text-xs px-3.5 py-2 rounded-xl font-medium transition-all shadow-2xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 <RefreshCw className={`w-3.5 h-3.5 text-gray-600 ${isResetting ? 'animate-spin' : ''}`} />
                 <span>پاکسازی و بازنشانی نمونه اولیه</span>
@@ -582,50 +772,180 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
               <button
                 onClick={() => setShowResetConfirmModal(true)}
-                disabled={isResetting || (!resetOptions.clearSources && !resetOptions.clearArticles && !resetOptions.clearTranslations && !resetOptions.clearLogs)}
-                className="bg-rose-600 hover:bg-rose-700 text-white text-xs px-4 py-2 rounded-xl font-bold transition-all shadow-sm flex items-center gap-2.5 disabled:opacity-50 cursor-pointer"
+                disabled={isResetting || (!resetOptions.clearSources && !resetOptions.clearArticles && !resetOptions.clearApprovedTranslations && !resetOptions.clearPendingTranslations && !resetOptions.clearLogs)}
+                className="bg-rose-600 hover:bg-rose-700 text-white text-xs px-4 py-2 rounded-xl font-bold transition-all shadow-sm flex items-center gap-2 disabled:opacity-50 cursor-pointer"
               >
                 <Trash2 className="w-4 h-4" />
-                <span>پاکسازی موارد انتخاب شده</span>
+                <span>پاکسازی گروهی موارد انتخاب شده</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Console Logs Output */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden mt-4">
-          <div className="bg-gray-800/90 px-4 py-2 border-b border-gray-700 flex items-center gap-2 justify-between">
-            <div className="flex items-center gap-2 ">
-              <Terminal className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs font-bold text-gray-200 font-mono">
-                کنسول لاگ‌های زنده سیستم (System Console Output)
-              </span>
+        {/* Enhanced & Optimized Live Console Output Panel */}
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden mt-5 shadow-lg">
+          <div className="bg-gray-800/95 px-4 py-3 border-b border-gray-700/80 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-emerald-500/10 rounded-lg border border-emerald-500/20">
+                <Terminal className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-gray-100 font-mono">
+                    کنسول لاگ‌های زنده سیستم (System Console Debugger)
+                  </span>
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    زنده - فعال
+                  </span>
+                </div>
+                <p className="text-[10px] text-gray-400 mt-0.5 font-mono">
+                  {logs.length} رویداد ثبت شده در حافظه | نمایش: {filteredLogs.length} لاگ
+                </p>
+              </div>
             </div>
-            <button
-              onClick={() => setLogs([])}
-              className="text-[11px] text-gray-400 hover:text-gray-200 underline"
-            >
-              پاکسازی
-            </button>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-gray-400 absolute right-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="جستجو در لاگ‌ها..."
+                  value={logSearchQuery}
+                  onChange={(e) => setLogSearchQuery(e.target.value)}
+                  className="bg-gray-950 border border-gray-700 text-gray-200 text-xs pr-8 pl-3 py-1 rounded-lg w-36 sm:w-48 focus:outline-none focus:border-emerald-500/50 font-mono"
+                />
+                {logSearchQuery && (
+                  <button
+                    onClick={() => setLogSearchQuery('')}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-200 text-xs"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <button
+                onClick={handleCopyConsoleLogs}
+                className="bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 text-[11px] px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="کپی لاگ‌ها در حافظه"
+              >
+                {copiedConsoleLogs ? (
+                  <>
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span className="text-emerald-400 font-medium">کپی شد</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3" />
+                    <span>کپی</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={handleDownloadConsoleLogs}
+                className="bg-gray-800 hover:bg-gray-700 text-gray-300 border border-gray-700 text-[11px] px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="دانلود فایل log"
+              >
+                <Download className="w-3 h-3" />
+                <span>دانلود</span>
+              </button>
+
+              <button
+                onClick={() => setLogs([])}
+                className="bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 border border-rose-800/40 text-[11px] px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="پاکسازی کنسول"
+              >
+                <X className="w-3 h-3" />
+                <span>پاکسازی</span>
+              </button>
+            </div>
           </div>
 
-          <div className="p-4 font-mono text-xs text-gray-300 space-y-1.5 max-h-52 overflow-y-auto ltr text-left bg-gray-950">
-            {logs.map((log, index) => (
-              <div
-                key={index}
-                className={`leading-relaxed border-b border-gray-900/50 pb-1 ${
-                  log.includes('❌')
-                    ? 'text-rose-400'
-                    : log.includes('✅')
-                    ? 'text-emerald-400'
-                    : log.includes('🚀') || log.includes('🤖')
-                    ? 'text-amber-300'
-                    : 'text-gray-300'
-                }`}
-              >
-                {log}
+          {/* Filter Bar */}
+          <div className="bg-gray-950/80 px-4 py-1.5 border-b border-gray-800 flex items-center gap-2 overflow-x-auto text-xs font-mono">
+            <span className="text-gray-500 text-[11px] flex items-center gap-1">
+              <Filter className="w-3 h-3" /> فیلتر:
+            </span>
+            <button
+              onClick={() => setLogFilter('all')}
+              className={`px-2.5 py-0.5 rounded text-[11px] transition-colors cursor-pointer ${
+                logFilter === 'all' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              همه ({logs.length})
+            </button>
+            <button
+              onClick={() => setLogFilter('errors')}
+              className={`px-2.5 py-0.5 rounded text-[11px] transition-colors cursor-pointer ${
+                logFilter === 'errors' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              خطاها ❌ ({logs.filter(l => l.includes('❌') || l.toLowerCase().includes('error')).length})
+            </button>
+            <button
+              onClick={() => setLogFilter('success')}
+              className={`px-2.5 py-0.5 rounded text-[11px] transition-colors cursor-pointer ${
+                logFilter === 'success' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              موفق ✅ ({logs.filter(l => l.includes('✅')).length})
+            </button>
+            <button
+              onClick={() => setLogFilter('routines')}
+              className={`px-2.5 py-0.5 rounded text-[11px] transition-colors cursor-pointer ${
+                logFilter === 'routines' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              عملیات 🚀 ({logs.filter(l => l.includes('🚀') || l.includes('🤖') || l.includes('🧹') || l.includes('⚠️')).length})
+            </button>
+
+            <div className="mr-auto flex items-center gap-2">
+              <label className="flex items-center gap-1.5 text-[11px] text-gray-400 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={autoScrollLogs}
+                  onChange={(e) => setAutoScrollLogs(e.target.checked)}
+                  className="w-3 h-3 text-emerald-500 rounded border-gray-700 bg-gray-900 focus:ring-emerald-500"
+                />
+                <span>اسکرول خودکار</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Console Output Area */}
+          <div className="p-4 font-mono text-xs text-gray-300 space-y-1 max-h-64 overflow-y-auto ltr text-left bg-gray-950/90 leading-relaxed selection:bg-emerald-900 selection:text-emerald-100">
+            {filteredLogs.length === 0 ? (
+              <div className="text-gray-600 italic py-6 text-center text-xs">
+                {logSearchQuery ? 'هیچ لاگی منطبق با واژه جستجو یافته نشد.' : 'هیچ رویدادی در این فیلتر ثبت نشده است.'}
               </div>
-            ))}
+            ) : (
+              filteredLogs.map((log, index) => (
+                <div
+                  key={index}
+                  className={`flex items-start gap-2 py-0.5 px-1.5 rounded transition-colors hover:bg-gray-800/40 ${
+                    log.includes('❌')
+                      ? 'text-rose-400 bg-rose-950/20 border-l-2 border-rose-500 pl-2'
+                      : log.includes('✅')
+                      ? 'text-emerald-400'
+                      : log.includes('🚀') || log.includes('🤖') || log.includes('🧹')
+                      ? 'text-amber-300 font-semibold'
+                      : log.includes('⚠️')
+                      ? 'text-amber-400'
+                      : 'text-gray-300'
+                  }`}
+                >
+                  <span className="text-gray-600 text-[10px] select-none w-6 shrink-0 text-right font-mono opacity-60">
+                    {index + 1}
+                  </span>
+                  <span className="break-all whitespace-pre-wrap flex-1">{log}</span>
+                </div>
+              ))
+            )}
+            <div ref={consoleEndRef} />
           </div>
         </div>
       </div>
@@ -1010,19 +1330,25 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               {resetOptions.clearSources && (
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                  <span><strong>منابع خبری فعال:</strong> تمام فیدهای RSS ثبت شده</span>
+                  <span><strong>منابع خبری:</strong> تمام فیدهای RSS ثبت شده</span>
                 </li>
               )}
               {resetOptions.clearArticles && (
                 <li className="flex items-center gap-2">
                   <CheckCircle2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                  <span><strong>اخبار و صف پردازش:</strong> تمامی اخبار دریافت شده و معلق</span>
+                  <span><strong>کل اخبار:</strong> تمامی عناوین و محتوای اخبار پایش شده</span>
                 </li>
               )}
-              {resetOptions.clearTranslations && (
+              {resetOptions.clearApprovedTranslations && (
                 <li className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-rose-600 shrink-0" />
-                  <span><strong>ترجمه‌های هوشمند:</strong> کلیه ترجمه‌های فارسی و تاریخچه AI</span>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span><strong>ترجمه‌های موفق:</strong> ترجمه‌های تاییدشده و ثبت‌شده در دیتابیس</span>
+                </li>
+              )}
+              {resetOptions.clearPendingTranslations && (
+                <li className="flex items-center gap-2">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span><strong>در صف پردازش:</strong> ترجمه‌ها و اخبار معلق در انتظار پردازش</span>
                 </li>
               )}
               {resetOptions.clearLogs && (

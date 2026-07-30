@@ -110,9 +110,6 @@ export const LandingPage: React.FC = () => {
       <div className="bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 text-white text-xs py-2 px-4 text-center font-bold flex items-center justify-center gap-2">
         <span className="bg-white/20 px-2 py-0.5 rounded-full text-[11px] font-mono">v2.4 Live</span>
         <span>معماری هاب توزیع چندکاناله محتوا و دیتابیس Cloudflare D1 فعال شد.</span>
-        <button onClick={() => navigate('/app')} className="underline hover:text-amber-100 mr-2">
-          ورود به پنل ادمین &larr;
-        </button>
       </div>
 
       {/* Navbar Header */}
@@ -193,13 +190,13 @@ export const LandingPage: React.FC = () => {
 
             {/* CTA Buttons */}
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-4">
-              <button
-                onClick={() => navigate('/app')}
+              <a
+                href="#features"
                 className="w-full sm:w-auto bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 active:scale-[0.98] text-white font-bold text-sm sm:text-base px-8 py-4 rounded-2xl shadow-xl shadow-orange-500/25 transition-all flex items-center justify-center gap-2.5 min-h-[50px]"
               >
-                <span>ورود به داشبورد مدیریت</span>
+                <span>بررسی امکانات و ویژگی‌ها</span>
                 <ArrowLeft className="w-5 h-5" />
-              </button>
+              </a>
             </div>
 
             {/* Live Trust Metrics */}
@@ -296,13 +293,6 @@ export const LandingPage: React.FC = () => {
                         افزایش حجم معاملات ارزهای دیجیتال با تصویب قوانین جدید مالی در اروپا
                       </h4>
                     </div>
-                    <button
-                      onClick={() => navigate('/app')}
-                      className="bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 border border-orange-500/30 text-xs font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 self-end sm:self-auto shrink-0"
-                    >
-                      <span>مشاهده در پنل</span>
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
                   </div>
                 </div>
               </div>
@@ -582,11 +572,6 @@ export const LandingPage: React.FC = () => {
               <div className="font-bold text-white text-sm">لینک‌های سریع</div>
               <ul className="space-y-1.5 text-slate-400">
                 <li>
-                  <button onClick={() => navigate('/app')} className="hover:text-orange-400 transition-colors">
-                    داشبورد ادمین D1
-                  </button>
-                </li>
-                <li>
                   <a href="#features" className="hover:text-orange-400 transition-colors">
                     ویژگی‌های کلیدی
                   </a>
@@ -607,11 +592,6 @@ export const LandingPage: React.FC = () => {
                   <a href="#live-status" className="hover:text-orange-400 transition-colors">
                     مانیتورینگ زنده
                   </a>
-                </li>
-                <li>
-                  <button onClick={() => navigate('/app')} className="hover:text-orange-400 transition-colors">
-                    لاگ‌های سیستم (Execution Logs)
-                  </button>
                 </li>
               </ul>
             </div>
