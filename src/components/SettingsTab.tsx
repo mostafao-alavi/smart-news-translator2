@@ -192,7 +192,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   }, []);
 
   const handleClearD1Logs = async () => {
-    
+    if (!confirm('آیا از پاکسازی تمامی لاگ‌ها و رویدادهای ثبت‌شده در دیتابیس D1 اطمینان دارید؟')) return;
     try {
       const res = await fetch('/api/logs', { method: 'DELETE' });
       if (res.ok) {
@@ -286,8 +286,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     key: 'clearSources' | 'clearArticles' | 'clearApprovedTranslations' | 'clearPendingTranslations' | 'clearLogs',
     title: string
   ) => {
-    
-
+    if (!confirm(`آیا از پاکسازی مستقیم داده‌های "${title}" اطمینان دارید؟ این عملیات غیرقابل بازگشت است.`)) return;
     setIsResetting(true);
     setResetSuccessMessage(null);
     addLog(`⚠️ Performing quick purge for: ${title}...`);

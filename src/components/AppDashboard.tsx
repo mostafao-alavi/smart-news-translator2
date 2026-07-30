@@ -176,7 +176,7 @@ export const AppDashboard: React.FC = () => {
   };
 
   const handleDeleteArticle = async (id: number) => {
-    
+    if (!window.confirm('آیا از حذف این خبر اطمینان دارید؟')) return;
     try {
       const res = await fetch(`/api/news/${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -226,7 +226,7 @@ export const AppDashboard: React.FC = () => {
   };
 
   const handleDeleteSource = async (id: number) => {
-    
+    if (!window.confirm('آیا از حذف این منبع خبری اطمینان دارید؟')) return;
     try {
       const res = await fetch(`/api/sources/${id}`, { method: 'DELETE' });
       if (res.ok) {
@@ -257,7 +257,7 @@ export const AppDashboard: React.FC = () => {
   };
 
   const handleBulkDeleteSources = async (ids: number[]) => {
-    
+    if (!window.confirm(`آیا از حذف گروهی ${ids.length} منبع خبر اطمینان دارید؟`)) return false;
     try {
       const res = await fetch('/api/sources/bulk-delete', {
         method: 'POST',
@@ -313,10 +313,14 @@ export const AppDashboard: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url }),
       });
-      return await res.json();
+      const json = await res.json();
+      if (json.success && json.data) {
+        return json.data;
+      }
+      return { isValid: false, errorDetails: json.error || 'خطا در بررسی فید' };
     } catch (e) {
       console.error('Error testing feed:', e);
-      return { success: false, error: 'خطا در ارتباط با سرور' };
+      return { isValid: false, errorDetails: 'خطا در ارتباط با سرور' };
     }
   };
 

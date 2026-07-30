@@ -236,7 +236,7 @@ export const D1ManagerTab: React.FC<D1ManagerTabProps> = ({
 
   // Delete Platform
   const handleDeletePlatform = async (id: number) => {
-    
+    if (!window.confirm('آیا از حذف این پلتفرم مقصد اطمینان دارید؟')) return;
     try {
       const res = await fetch(`/api/platforms/${id}`, { method: 'DELETE' });
       const json = await res.json();
@@ -351,7 +351,7 @@ export const D1ManagerTab: React.FC<D1ManagerTabProps> = ({
 
   // Handle Delete Distribution
   const handleDeleteDistribution = async (id: number) => {
-    
+    if (!window.confirm('آیا از حذف این رکورد توزیع محتوا اطمینان دارید؟')) return;
     try {
       const res = await fetch(`/api/distributions/${id}`, { method: 'DELETE' });
       const json = await res.json();
@@ -401,7 +401,7 @@ export const D1ManagerTab: React.FC<D1ManagerTabProps> = ({
 
   // Delete Translation
   const handleDeleteTranslation = async (id: number) => {
-    
+    if (!window.confirm('آیا از حذف این ترجمه مطمئن هستید؟ (رکوردهای توزیع وابسته نیز حذف خواهند شد)')) return;
     try {
       const res = await fetch(`/api/translations/${id}`, { method: 'DELETE' });
       const json = await res.json();
