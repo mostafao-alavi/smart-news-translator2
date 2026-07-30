@@ -5,6 +5,7 @@ export interface JoinedArticleNews {
   original_url: string;
   title: string;
   content?: string | null;
+  featured_image?: string | null;
   published_at: string;
   created_at: string;
   translation_status: 'pending' | 'processing' | 'completed' | 'failed';

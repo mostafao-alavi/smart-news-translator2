@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS articles (
   original_url TEXT NOT NULL UNIQUE,
   title TEXT NOT NULL,
   content TEXT NOT NULL,
+  featured_image TEXT,
   published_at TEXT,
   created_at TEXT DEFAULT (datetime('now')),
   translation_status TEXT DEFAULT 'pending',

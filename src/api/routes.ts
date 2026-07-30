@@ -97,12 +97,31 @@ export async function ensureTablesAndLogs(db: any, force: boolean = false) {
         auth_password_secret TEXT,
         is_active INTEGER DEFAULT 1,
         created_at TEXT DEFAULT (datetime('now'))
+      );`,
+      `CREATE TABLE IF NOT EXISTS system_metrics (
+        key TEXT PRIMARY KEY,
+        value INTEGER DEFAULT 0
       );`
     ];
 
     for (const sql of tableSqls) {
       try { await db.prepare(sql).run(); } catch {}
     }
+
+    // Initialize metrics if empty
+    try {
+      await db.prepare(`
+        INSERT OR IGNORE INTO system_metrics (key, value) VALUES
+        ('sources_count', (SELECT COUNT(*) FROM sources)),
+        ('articles_count', (SELECT COUNT(*) FROM articles)),
+        ('translations_count', (SELECT COUNT(*) FROM translations)),
+        ('pending_translations_count', (SELECT COUNT(*) FROM articles WHERE translation_status = 'pending')),
+        ('wp_published_count', (SELECT COUNT(*) FROM articles WHERE wp_sync_status = 'published')),
+        ('distributions_count', (SELECT COUNT(*) FROM distributions)),
+        ('platforms_count', (SELECT COUNT(*) FROM platforms)),
+        ('approved_translations_count', (SELECT COUNT(*) FROM translations WHERE approval_status = 'approved' OR approval_status IS NULL))
+      `).run();
+    } catch {}
 
     // Safe column migrations for existing tables
     const migrations = [
@@ -155,6 +174,52 @@ export async function ensureTablesAndLogs(db: any, force: boolean = false) {
     ];
 
     for (const sql of indexes) {
+      try { await db.prepare(sql).run(); } catch {}
+    }
+
+    // Triggers for system_metrics
+    const triggers = [
+      `CREATE TRIGGER IF NOT EXISTS trg_inc_sources AFTER INSERT ON sources BEGIN UPDATE system_metrics SET value = value + 1 WHERE key = 'sources_count'; END;`,
+      `CREATE TRIGGER IF NOT EXISTS trg_dec_sources AFTER DELETE ON sources BEGIN UPDATE system_metrics SET value = value - 1 WHERE key = 'sources_count'; END;`,
+      
+      `CREATE TRIGGER IF NOT EXISTS trg_inc_articles AFTER INSERT ON articles BEGIN 
+         UPDATE system_metrics SET value = value + 1 WHERE key = 'articles_count';
+         UPDATE system_metrics SET value = value + 1 WHERE key = 'pending_translations_count' AND NEW.translation_status = 'pending';
+         UPDATE system_metrics SET value = value + 1 WHERE key = 'wp_published_count' AND NEW.wp_sync_status = 'published';
+       END;`,
+      `CREATE TRIGGER IF NOT EXISTS trg_dec_articles AFTER DELETE ON articles BEGIN 
+         UPDATE system_metrics SET value = value - 1 WHERE key = 'articles_count';
+         UPDATE system_metrics SET value = value - 1 WHERE key = 'pending_translations_count' AND OLD.translation_status = 'pending';
+         UPDATE system_metrics SET value = value - 1 WHERE key = 'wp_published_count' AND OLD.wp_sync_status = 'published';
+       END;`,
+      `CREATE TRIGGER IF NOT EXISTS trg_upd_articles AFTER UPDATE ON articles BEGIN
+         UPDATE system_metrics SET value = value - 1 WHERE key = 'pending_translations_count' AND OLD.translation_status = 'pending' AND NEW.translation_status != 'pending';
+         UPDATE system_metrics SET value = value + 1 WHERE key = 'pending_translations_count' AND OLD.translation_status != 'pending' AND NEW.translation_status = 'pending';
+         UPDATE system_metrics SET value = value - 1 WHERE key = 'wp_published_count' AND OLD.wp_sync_status = 'published' AND NEW.wp_sync_status != 'published';
+         UPDATE system_metrics SET value = value + 1 WHERE key = 'wp_published_count' AND OLD.wp_sync_status != 'published' AND NEW.wp_sync_status = 'published';
+       END;`,
+
+      `CREATE TRIGGER IF NOT EXISTS trg_inc_translations AFTER INSERT ON translations BEGIN 
+         UPDATE system_metrics SET value = value + 1 WHERE key = 'translations_count';
+         UPDATE system_metrics SET value = value + 1 WHERE key = 'approved_translations_count' AND (NEW.approval_status = 'approved' OR NEW.approval_status IS NULL);
+       END;`,
+      `CREATE TRIGGER IF NOT EXISTS trg_dec_translations AFTER DELETE ON translations BEGIN 
+         UPDATE system_metrics SET value = value - 1 WHERE key = 'translations_count';
+         UPDATE system_metrics SET value = value - 1 WHERE key = 'approved_translations_count' AND (OLD.approval_status = 'approved' OR OLD.approval_status IS NULL);
+       END;`,
+       `CREATE TRIGGER IF NOT EXISTS trg_upd_translations AFTER UPDATE ON translations BEGIN
+         UPDATE system_metrics SET value = value - 1 WHERE key = 'approved_translations_count' AND (OLD.approval_status = 'approved' OR OLD.approval_status IS NULL) AND NEW.approval_status != 'approved' AND NEW.approval_status IS NOT NULL;
+         UPDATE system_metrics SET value = value + 1 WHERE key = 'approved_translations_count' AND (OLD.approval_status != 'approved' AND OLD.approval_status IS NOT NULL) AND (NEW.approval_status = 'approved' OR NEW.approval_status IS NULL);
+       END;`,
+       
+      `CREATE TRIGGER IF NOT EXISTS trg_inc_distributions AFTER INSERT ON distributions BEGIN UPDATE system_metrics SET value = value + 1 WHERE key = 'distributions_count'; END;`,
+      `CREATE TRIGGER IF NOT EXISTS trg_dec_distributions AFTER DELETE ON distributions BEGIN UPDATE system_metrics SET value = value - 1 WHERE key = 'distributions_count'; END;`,
+      
+      `CREATE TRIGGER IF NOT EXISTS trg_inc_platforms AFTER INSERT ON platforms BEGIN UPDATE system_metrics SET value = value + 1 WHERE key = 'platforms_count'; END;`,
+      `CREATE TRIGGER IF NOT EXISTS trg_dec_platforms AFTER DELETE ON platforms BEGIN UPDATE system_metrics SET value = value - 1 WHERE key = 'platforms_count'; END;`
+    ];
+
+    for (const sql of triggers) {
       try { await db.prepare(sql).run(); } catch {}
     }
 
@@ -263,6 +328,7 @@ const handleFetchNewsList = async (c: any) => {
         sources.name AS source_name,
         articles.original_url,
         articles.title,
+        articles.featured_image,
         articles.published_at,
         articles.created_at,
         articles.translation_status,
@@ -316,6 +382,7 @@ const handleFetchArticleDetail = async (c: any) => {
         articles.original_url,
         articles.title,
         articles.content,
+        articles.featured_image,
         articles.published_at,
         articles.created_at,
         articles.translation_status,
@@ -730,28 +797,51 @@ api.get('/news/:id/history', async (c) => {
   }
 });
 
-// GET /api/stats - Aggregated metrics for Dashboard
+// GET /api/stats - Aggregated metrics for Dashboard (Using cached system_metrics)
 api.get('/stats', async (c) => {
   try {
     await ensureTablesAndLogs(c.env.DB);
-    const batchRes = await c.env.DB.batch<{ count: number }>([
-      c.env.DB.prepare('SELECT COUNT(*) as count FROM sources'),
-      c.env.DB.prepare('SELECT COUNT(*) as count FROM articles'),
-      c.env.DB.prepare('SELECT COUNT(*) as count FROM translations'),
-      c.env.DB.prepare("SELECT COUNT(*) as count FROM articles WHERE translation_status = 'pending'"),
-      c.env.DB.prepare("SELECT COUNT(*) as count FROM distributions"),
-      c.env.DB.prepare("SELECT COUNT(*) as count FROM platforms"),
-      c.env.DB.prepare("SELECT COUNT(*) as count FROM translations WHERE approval_status = 'approved' OR approval_status IS NULL"),
-    ]);
+    const metrics = await c.env.DB.prepare('SELECT key, value FROM system_metrics').all<{key: string, value: number}>();
+    
+    // Fallback if triggers haven't populated yet
+    if (!metrics || !metrics.results || metrics.results.length === 0) {
+      const batchRes = await c.env.DB.batch<{ count: number }>([
+        c.env.DB.prepare('SELECT COUNT(*) as count FROM sources'),
+        c.env.DB.prepare('SELECT COUNT(*) as count FROM articles'),
+        c.env.DB.prepare('SELECT COUNT(*) as count FROM translations'),
+        c.env.DB.prepare("SELECT COUNT(*) as count FROM articles WHERE translation_status = 'pending'"),
+        c.env.DB.prepare("SELECT COUNT(*) as count FROM distributions"),
+        c.env.DB.prepare("SELECT COUNT(*) as count FROM platforms"),
+        c.env.DB.prepare("SELECT COUNT(*) as count FROM translations WHERE approval_status = 'approved' OR approval_status IS NULL"),
+        c.env.DB.prepare("SELECT COUNT(*) as count FROM articles WHERE wp_sync_status = 'published'")
+      ]);
+      const stats: StatsData = {
+        sources_count: batchRes[0]?.results?.[0]?.count || 0,
+        articles_count: batchRes[1]?.results?.[0]?.count || 0,
+        translations_count: batchRes[2]?.results?.[0]?.count || 0,
+        pending_translations_count: batchRes[3]?.results?.[0]?.count || 0,
+        distributions_count: batchRes[4]?.results?.[0]?.count || 0,
+        platforms_count: batchRes[5]?.results?.[0]?.count || 0,
+        approved_translations_count: batchRes[6]?.results?.[0]?.count || 0,
+        wp_published_count: batchRes[7]?.results?.[0]?.count || 0,
+      };
+      return c.json({ success: true, data: stats, error: null }, 200);
+    }
+
+    const statsMap: Record<string, number> = {};
+    metrics.results.forEach(m => {
+      statsMap[m.key] = m.value;
+    });
 
     const stats: StatsData = {
-      sources_count: batchRes[0]?.results?.[0]?.count || 0,
-      articles_count: batchRes[1]?.results?.[0]?.count || 0,
-      translations_count: batchRes[2]?.results?.[0]?.count || 0,
-      pending_translations_count: batchRes[3]?.results?.[0]?.count || 0,
-      distributions_count: batchRes[4]?.results?.[0]?.count || 0,
-      platforms_count: batchRes[5]?.results?.[0]?.count || 0,
-      approved_translations_count: batchRes[6]?.results?.[0]?.count || 0,
+      sources_count: statsMap['sources_count'] || 0,
+      articles_count: statsMap['articles_count'] || 0,
+      translations_count: statsMap['translations_count'] || 0,
+      pending_translations_count: statsMap['pending_translations_count'] || 0,
+      distributions_count: statsMap['distributions_count'] || 0,
+      platforms_count: statsMap['platforms_count'] || 0,
+      approved_translations_count: statsMap['approved_translations_count'] || 0,
+      wp_published_count: statsMap['wp_published_count'] || 0,
     };
 
     return c.json({ success: true, data: stats, error: null }, 200);
@@ -1082,44 +1172,7 @@ api.post('/sources/test-feed', async (c) => {
   }
 });
 
-// GET /api/stats - Get count of sources, articles, translations, and distributions
-api.get('/stats', async (c) => {
-  try {
-    const batchRes = await c.env.DB.batch<{ count: number }>([
-      c.env.DB.prepare('SELECT COUNT(*) as count FROM sources'),
-      c.env.DB.prepare('SELECT COUNT(*) as count FROM articles'),
-      c.env.DB.prepare('SELECT COUNT(*) as count FROM translations'),
-      c.env.DB.prepare("SELECT COUNT(*) as count FROM articles WHERE translation_status = 'pending'"),
-      c.env.DB.prepare("SELECT COUNT(*) as count FROM articles WHERE wp_sync_status = 'published'"),
-      c.env.DB.prepare('SELECT COUNT(*) as count FROM distributions'),
-    ]);
 
-    const stats: StatsData = {
-      sources_count: batchRes[0]?.results?.[0]?.count || 0,
-      articles_count: batchRes[1]?.results?.[0]?.count || 0,
-      translations_count: batchRes[2]?.results?.[0]?.count || 0,
-      pending_translations_count: batchRes[3]?.results?.[0]?.count || 0,
-      wp_published_count: batchRes[4]?.results?.[0]?.count || 0,
-      distributions_count: batchRes[5]?.results?.[0]?.count || 0,
-    };
-
-    const response: ApiResponse<StatsData> = {
-      success: true,
-      data: stats,
-      error: null,
-    };
-
-    c.header('Cache-Control', 'public, max-age=10, s-maxage=30');
-    return c.json(response, 200);
-  } catch (err: any) {
-    const response: ApiResponse<null> = {
-      success: false,
-      data: null,
-      error: err.message || 'Error fetching stats',
-    };
-    return c.json(response, 500);
-  }
-});
 
 // GET /api/auth/status - Cloudflare Zero Trust Access authentication status
 api.get('/auth/status', async (c) => {

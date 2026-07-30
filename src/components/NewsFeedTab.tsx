@@ -657,6 +657,17 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
                           </div>
                         </div>
 
+                        {/* Article Featured Image */}
+                        {selectedArticle.featured_image && (
+                          <div className="relative z-10 w-full mb-6 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+                            <img 
+                              src={selectedArticle.featured_image} 
+                              alt={selectedArticle.translated_title || selectedArticle.title}
+                              className="w-full h-auto object-cover max-h-96"
+                            />
+                          </div>
+                        )}
+
                         {/* Article Persian Title */}
                         <h1 className="text-xl sm:text-3xl font-black text-gray-900 leading-snug tracking-tight relative z-10">
                           {selectedArticle.translated_title}
@@ -716,6 +727,16 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
                         <ExternalLink className="w-3.5 h-3.5" />
                       </a>
                     </div>
+
+                    {selectedArticle.featured_image && (
+                      <div className="w-full mb-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+                        <img 
+                          src={selectedArticle.featured_image} 
+                          alt={selectedArticle.title}
+                          className="w-full h-auto object-cover max-h-96"
+                        />
+                      </div>
+                    )}
 
                     <h2 className="text-base sm:text-xl font-bold text-gray-900 ltr text-left leading-snug">
                       {selectedArticle.title}

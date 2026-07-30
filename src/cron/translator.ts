@@ -104,7 +104,7 @@ export async function translateTextWithAI(
           body: JSON.stringify({
             contents: [{
               parts: [{
-                text: `You are a professional translator from ${sourceLang} to ${targetLang}. Translate the following text cleanly and accurately into fluent ${targetLang}. Output ONLY the translated text without explanations or quotes:\n\n${truncatedText}`
+                text: `You are a professional translator from ${sourceLang} to ${targetLang}. Translate the following text cleanly and accurately into fluent ${targetLang}. Preserve all Markdown formatting (including links, image tags, lists, and headings). Output ONLY the translated text without explanations or quotes:\n\n${truncatedText}`
               }]
             }]
           })
@@ -132,12 +132,12 @@ export async function translateTextWithAI(
         modelToUse.includes('mistral') || 
         modelToUse.includes('qwen')
       ) {
-        const prompt = `[INST] You are an expert translator. Translate the following English news text into fluent, natural Persian (Farsi). Output ONLY the translated Persian text without any English commentary, preamble, or quotation marks.\n\nText to translate:\n${truncatedText} [/INST]`;
+        const prompt = `[INST] You are an expert translator. Translate the following English news text into fluent, natural Persian (Farsi). Preserve all Markdown formatting (including links, image tags, lists, and headings). Output ONLY the translated Persian text without any English commentary, preamble, or quotation marks.\n\nText to translate:\n${truncatedText} [/INST]`;
         
         const response: any = await env.AI.run(modelToUse, {
           messages: [
-            { role: 'system', content: 'You are a professional English to Persian (Farsi) news translator.' },
-            { role: 'user', content: `Translate this news text into fluent Persian (Farsi):\n${truncatedText}` }
+            { role: 'system', content: 'You are a professional English to Persian (Farsi) news translator. Always preserve Markdown formatting.' },
+            { role: 'user', content: `Translate this news text into fluent Persian (Farsi), preserving Markdown:\n${truncatedText}` }
           ],
           max_tokens: 800,
         });
@@ -187,7 +187,7 @@ export async function translateTextWithAI(
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: `Translate the following text accurately into fluent Persian (Farsi):\n\n${truncatedText}`
+              text: `Translate the following text accurately into fluent Persian (Farsi). Preserve all Markdown formatting (including links, image tags, lists, and headings):\n\n${truncatedText}`
             }]
           }]
         })

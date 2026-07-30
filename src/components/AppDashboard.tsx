@@ -93,8 +93,8 @@ export const AppDashboard: React.FC = () => {
   };
 
   // Fetch Stats from GET /api/stats
-  const fetchStats = async () => {
-    setLoadingStats(true);
+  const fetchStats = async (isPoll: boolean = false) => {
+    if (!isPoll) setLoadingStats(true);
     try {
       const res = await fetch('/api/stats');
       if (res.ok) {
@@ -106,7 +106,7 @@ export const AppDashboard: React.FC = () => {
     } catch (e) {
       console.error('Error fetching stats:', e);
     } finally {
-      setLoadingStats(false);
+      if (!isPoll) setLoadingStats(false);
     }
   };
 
@@ -118,6 +118,13 @@ export const AppDashboard: React.FC = () => {
 
   useEffect(() => {
     refreshAllData();
+    
+    // Live polling for stats
+    const statsInterval = setInterval(() => {
+      fetchStats(true);
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(statsInterval);
   }, []);
 
   // Handlers

@@ -92,6 +92,7 @@ export async function wpSyncPublisher(
       articles.original_url,
       articles.title AS original_title,
       articles.content AS original_content,
+      articles.featured_image,
       articles.published_at,
       articles.created_at,
       translations.id AS translation_id,
@@ -133,9 +134,11 @@ export async function wpSyncPublisher(
     const titleToPublish = item.translated_title || item.original_title;
     const bodyToPublish = item.translated_content || item.original_content;
     const authorAttribution = item.source_name || 'خبرگزاری خارجی';
+    const featuredImageHtml = item.featured_image ? `<img src="${item.featured_image}" alt="${titleToPublish}" style="max-width:100%; height:auto; margin-bottom: 20px; border-radius: 8px;" />` : '';
 
     const formattedContent = `
       <div class="translated-article-container font-vazirmatn text-justify leading-relaxed">
+        ${featuredImageHtml}
         ${bodyToPublish.split('\n\n').map((p: string) => `<p>${p.trim()}</p>`).join('')}
         <hr class="my-6 border-t border-gray-200" />
         <p class="text-sm text-gray-500 bg-gray-50 p-3 rounded-lg border border-gray-100">

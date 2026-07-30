@@ -1,8 +1,46 @@
 import * as cheerio from 'cheerio';
+import TurndownService from 'turndown';
 import { Env, Source } from '../types';
 
+function sanitizeContent(markdown: string): string {
+  let cleaned = markdown;
+
+  // 1. Remove price bar / top noise (everything before the first main heading)
+  const firstHeadingMatch = cleaned.match(/(?:^|\n)#\s/);
+  if (firstHeadingMatch && firstHeadingMatch.index !== undefined) {
+    cleaned = cleaned.substring(firstHeadingMatch.index).trim();
+  }
+
+  // 2. Remove Category and Published Date metadata
+  // e.g., [Latest News](/category/latest-news)PublishedJul 30, 2026
+  cleaned = cleaned.replace(/\[[^\]]+\]\([^)]+\)Published\s?[a-zA-Z]{3,10}\s?\d{1,2},\s?\d{4}/g, '');
+
+  // 3. Remove Inline Related Links
+  // e.g., _**Related:**_ [_**Pavel Durov says Telegram to roll out native Gram crypto wallet**_](...)
+  cleaned = cleaned.replace(/_?\*?\*?Related:\*?\*?_?\s*\[.*?\]\(.*?\)/gi, '');
+
+  // 4. Remove footer/end sections
+  const truncatePhrases = [
+    "## More on the subject",
+    "Subscribe to daily",
+    "This article is produced in accordance with",
+    "\n*   [", // Tags list starting with bullet and link
+    "\n* [",   // Alternative tag format
+    "_**Magazine:**_"
+  ];
+
+  for (const phrase of truncatePhrases) {
+    const idx = cleaned.indexOf(phrase);
+    if (idx !== -1) {
+      cleaned = cleaned.substring(0, idx).trim();
+    }
+  }
+
+  return cleaned;
+}
+
 /**
- * Extract full article text from a web page HTML using Cheerio and target selector
+ * Extract full article text from a web page HTML using Cheerio and Turndown
  */
 export async function extractFullArticleText(
   url: string,
@@ -25,33 +63,36 @@ export async function extractFullArticleText(
     const $ = cheerio.load(html);
 
     // Remove unwanted non-article elements
-    $('script, style, nav, footer, header, iframe, noscript, svg, form, button').remove();
+    $('script, style, nav, footer, header, iframe, noscript, svg, form, button, .ad, .advertisement, .sidebar').remove();
 
     const targetSelector = sourceSelector || 'article, .post-content, .entry-content, .article-content, main, [class*="StoryBody"], [class*="article-body"]';
 
-    let fullText = '';
-    $(targetSelector).each((_, el) => {
-      const text = $(el).text().replace(/\s+/g, ' ').trim();
-      if (text) {
-        fullText += text + '\n\n';
-      }
-    });
-
-    // Fallback to paragraph tags if target selector yields insufficient text
-    if (fullText.trim().length < 100) {
-      let pText = '';
-      $('p').each((_, el) => {
-        const text = $(el).text().replace(/\s+/g, ' ').trim();
-        if (text.length > 20) {
-          pText += text + '\n\n';
-        }
+    let contentHtml = '';
+    const selectedElements = $(targetSelector);
+    
+    if (selectedElements.length > 0) {
+      selectedElements.each((_, el) => {
+        contentHtml += $(el).html() + '\n\n';
       });
-      if (pText.trim().length > fullText.trim().length) {
-        fullText = pText;
-      }
+    } else {
+      // Fallback to body or a large container
+      contentHtml = $('body').html() || '';
     }
 
-    return fullText.trim().length > 50 ? fullText.trim() : null;
+    if (!contentHtml.trim()) {
+      return null;
+    }
+
+    // Convert HTML to Markdown (preserves images, lists, basic structure)
+    const turndownService = new TurndownService({
+      headingStyle: 'atx',
+      codeBlockStyle: 'fenced'
+    });
+    
+    let markdown = turndownService.turndown(contentHtml);
+    markdown = sanitizeContent(markdown);
+
+    return markdown.trim().length > 50 ? markdown.trim() : null;
   } catch (err: any) {
     console.error(`Error extracting full article text for ${url}:`, err.message);
     return null;
@@ -62,7 +103,7 @@ export async function extractFullArticleText(
  * Lightweight XML tag extractor for RSS (<item>) and Atom (<entry>) feeds.
  */
 function parseRssXml(xmlText: string) {
-  const items: Array<{ title: string; link: string; content: string; publishedAt: string }> = [];
+  const items: Array<{ title: string; link: string; content: string; publishedAt: string; featuredImage: string | null }> = [];
 
   // Match either <item>...</item> or <entry>...</entry>
   const itemMatches = xmlText.match(/<(?:item|entry)[\s\S]*?<\/(?:item|entry)>/gi) || [];
@@ -97,12 +138,31 @@ function parseRssXml(xmlText: string) {
       const rawDate = dateMatch ? (dateMatch[1] || dateMatch[2] || '') : '';
       const publishedAt = rawDate ? new Date(rawDate.trim()).toISOString() : new Date().toISOString();
 
+      // Extract featured image from <media:content> or <enclosure>
+      let featuredImage = null;
+      const mediaMatch = itemXml.match(/<media:content[^>]+url=["']([^"']+)["']/i);
+      if (mediaMatch) {
+        featuredImage = mediaMatch[1];
+      } else {
+        const enclosureMatch = itemXml.match(/<enclosure[^>]+url=["']([^"']+)["']/i);
+        if (enclosureMatch && enclosureMatch[1].match(/\.(jpeg|jpg|gif|png|webp)/i)) {
+          featuredImage = enclosureMatch[1];
+        } else {
+          // Try to get image from content HTML
+          const imgMatch = rawContent.match(/<img[^>]+src=["']([^"']+)["']/i);
+          if (imgMatch) {
+            featuredImage = imgMatch[1];
+          }
+        }
+      }
+
       if (title && link) {
         items.push({
           title,
           link,
           content: content || title,
           publishedAt,
+          featuredImage,
         });
       }
     } catch {
@@ -173,30 +233,53 @@ export async function scraper(env: Env): Promise<{ scrapedSources: number; inser
         const limitedArticles = parsedArticles.slice(0, limit);
 
         if (limitedArticles.length > 0) {
-          const stmts = limitedArticles.map((item) =>
-            env.DB.prepare(`
-              INSERT OR IGNORE INTO articles (
-                source_id, 
-                original_url, 
-                title, 
-                content, 
-                published_at, 
-                created_at, 
-                translation_status
-              ) VALUES (?, ?, ?, ?, ?, datetime('now'), 'pending')
-            `).bind(
-              source.id,
-              item.link,
-              item.title,
-              item.content,
-              item.publishedAt
-            )
-          );
+          // Check which URLs already exist to avoid unnecessary scraping
+          const urls = limitedArticles.map(a => a.link);
+          const placeholders = urls.map(() => '?').join(',');
+          
+          const existingResult = await env.DB.prepare(
+            `SELECT original_url FROM articles WHERE original_url IN (${placeholders})`
+          ).bind(...urls).all<{ original_url: string }>();
+          
+          const existingUrls = new Set(existingResult.results?.map(r => r.original_url) || []);
+          
+          const newArticles = limitedArticles.filter(a => !existingUrls.has(a.link));
 
-          const batchResults = await env.DB.batch(stmts);
-          for (const res of batchResults) {
-            if (res.meta && res.meta.changes > 0) {
-              insertedCount++;
+          if (newArticles.length > 0) {
+            const stmts = [];
+            for (const item of newArticles) {
+              // Extract full text (including images, markdown)
+              const fullContent = await extractFullArticleText(item.link, source.selector);
+              const contentToSave = fullContent || item.content; // fallback to RSS snippet
+
+              stmts.push(
+                env.DB.prepare(`
+                  INSERT OR IGNORE INTO articles (
+                    source_id, 
+                    original_url, 
+                    title, 
+                    content,
+                    featured_image,
+                    published_at, 
+                    created_at, 
+                    translation_status
+                  ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 'pending')
+                `).bind(
+                  source.id,
+                  item.link,
+                  item.title,
+                  contentToSave,
+                  item.featuredImage || null,
+                  item.publishedAt
+                )
+              );
+            }
+
+            const batchResults = await env.DB.batch(stmts);
+            for (const res of batchResults) {
+              if (res.meta && res.meta.changes > 0) {
+                insertedCount++;
+              }
             }
           }
         }
