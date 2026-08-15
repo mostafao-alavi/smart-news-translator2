@@ -12,12 +12,12 @@ CREATE TABLE IF NOT EXISTS sources (
   language TEXT DEFAULT 'en',
   category TEXT DEFAULT 'crypto',
   is_active INTEGER DEFAULT 1,
-  scrape_limit INTEGER DEFAULT 5,
+  scrape_limit INTEGER DEFAULT 10,
   last_scraped_at TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. articles
+-- 2. articles (شامل ستون featured_image)
 CREATE TABLE IF NOT EXISTS articles (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   source_id INTEGER NOT NULL,
@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS articles (
   title TEXT NOT NULL,
   link TEXT NOT NULL UNIQUE,
   summary TEXT,
+  featured_image TEXT,
   published_at TEXT,
   scraped_at TEXT DEFAULT CURRENT_TIMESTAMP,
   status TEXT DEFAULT 'pending',

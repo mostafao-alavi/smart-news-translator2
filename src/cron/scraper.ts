@@ -353,37 +353,56 @@ export async function saveArticle(
   if (!env.DB) return null;
 
   try {
-    // 1. Insert into articles
+    const featuredImg = article.featured_image || (images && images.length > 0 ? images[0].url : null);
+
+    // 1. Insert into articles (including featured_image)
     let articleId: number | null = null;
 
     try {
       const artRes = await env.DB.prepare(`
-        INSERT INTO articles (source_id, external_id, title, link, summary, published_at, scraped_at, status)
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 'pending')
+        INSERT INTO articles (source_id, external_id, title, link, summary, featured_image, published_at, scraped_at, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), 'pending')
       `).bind(
         article.source_id || 1,
         article.external_id || article.link,
         article.title,
         article.link,
         article.summary || '',
+        featuredImg,
         article.published_at
       ).run();
 
       articleId = Number(artRes.meta?.last_row_id);
     } catch {
-      // Legacy schema fallback
-      const legRes = await env.DB.prepare(`
-        INSERT OR IGNORE INTO articles (source_id, original_url, title, content, featured_image, published_at, created_at, translation_status)
-        VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 'pending')
-      `).bind(
-        article.source_id || 1,
-        article.link,
-        article.title,
-        content.full_text || article.summary || '',
-        article.featured_image || null,
-        article.published_at
-      ).run();
-      articleId = Number(legRes.meta?.last_row_id);
+      // Fallback if table doesn't have external_id or uses original_url
+      try {
+        const altRes = await env.DB.prepare(`
+          INSERT INTO articles (source_id, title, link, summary, featured_image, published_at, scraped_at, status)
+          VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 'pending')
+        `).bind(
+          article.source_id || 1,
+          article.title,
+          article.link,
+          article.summary || '',
+          featuredImg,
+          article.published_at
+        ).run();
+        articleId = Number(altRes.meta?.last_row_id);
+      } catch {
+        // Legacy schema fallback
+        const legRes = await env.DB.prepare(`
+          INSERT OR IGNORE INTO articles (source_id, original_url, title, content, featured_image, published_at, created_at, translation_status)
+          VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 'pending')
+        `).bind(
+          article.source_id || 1,
+          article.link,
+          article.title,
+          content.full_text || article.summary || '',
+          featuredImg,
+          article.published_at
+        ).run();
+        articleId = Number(legRes.meta?.last_row_id);
+      }
     }
 
     if (!articleId) {

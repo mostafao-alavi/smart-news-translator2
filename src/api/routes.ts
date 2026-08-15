@@ -628,6 +628,55 @@ api.put('/sources/:id', async (c) => {
   }
 });
 
+// POST /api/sources/:id/scrape - Scrape a specific source on demand
+api.post('/sources/:id/scrape', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const { scrapeCointelegraph, scrapeFullArticle, saveArticle } = await import('../cron/scraper');
+    
+    // Check if source exists
+    const source = await c.env.DB.prepare('SELECT * FROM sources WHERE id = ?').bind(id).first<any>();
+    
+    // If it's Cointelegraph or general RSS
+    const articles = await scrapeCointelegraph(c.env);
+    let insertedCount = 0;
+
+    for (const art of articles) {
+      try {
+        const fullContent = await scrapeFullArticle(c.env, art.link);
+        const artId = await saveArticle(
+          c.env,
+          { ...art, source_id: Number(id) || 1 },
+          fullContent,
+          fullContent.images
+        );
+        if (artId) {
+          insertedCount++;
+        }
+      } catch (err: any) {
+        console.error(`Error scraping item in /sources/${id}/scrape:`, err.message);
+      }
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        sourceId: Number(id),
+        sourceName: source?.name || 'Cointelegraph',
+        newlyInserted: insertedCount,
+        message: `تعداد ${insertedCount} مقاله جدید با موفقیت دریافت و ذخیره شد.`,
+      },
+      error: null,
+    }, 200);
+  } catch (err: any) {
+    return c.json({
+      success: false,
+      data: null,
+      error: `خطا در اجرای اسکرپر برای منبع ${id}: ${err.message}`,
+    }, 500);
+  }
+});
+
 // POST /api/sources/bulk-delete - Bulk delete selected sources
 api.post('/sources/bulk-delete', async (c) => {
   try {
@@ -1176,51 +1225,6 @@ api.post('/translate', async (c) => {
       },
       error: null,
     });
-  } catch (err: any) {
-    return c.json({ success: false, data: null, error: err.message }, 500);
-  }
-});
-
-// POST /api/sources/:id/scrape - Scrape single source RSS feed
-api.post('/sources/:id/scrape', async (c) => {
-  try {
-    const id = c.req.param('id');
-    const source = await c.env.DB.prepare('SELECT * FROM sources WHERE id = ?').bind(id).first<Source>();
-    if (!source) {
-      return c.json({ success: false, data: null, error: 'منبع یافت نشد' }, 404);
-    }
-    let newlyInserted = 0;
-    try {
-      const response = await fetch(source.url, {
-        headers: { 'User-Agent': 'CloudflareNewsWorker/1.0' },
-        signal: AbortSignal.timeout(6000),
-      });
-      if (response.ok) {
-        const xml = await response.text();
-        const itemMatches = xml.match(/<(?:item|entry)[\s\S]*?<\/(?:item|entry)>/gi) || [];
-        for (const itemXml of itemMatches.slice(0, 5)) {
-          const titleMatch = itemXml.match(/<title[^>]*>(?:<!\[CDATA\[([\s\S]*?)\]\]>|([\s\S]*?))<\/title>/i);
-          const rawTitle = titleMatch ? (titleMatch[1] || titleMatch[2] || '') : '';
-          const title = rawTitle.replace(/<[^>]+>/g, '').trim();
-
-          const linkMatch = itemXml.match(/<link[^>]*>(?:<!\[CDATA\[([\s\S]*?)\]\]>|([\s\S]*?))<\/link>/i) || itemXml.match(/href=["']([^"']+)["']/i);
-          const link = linkMatch ? (linkMatch[1] || linkMatch[2] || '').trim() : `${source.url}#item-${Date.now()}`;
-
-          if (title) {
-            const exists = await c.env.DB.prepare('SELECT id FROM articles WHERE original_url = ?').bind(link).first();
-            if (!exists) {
-              const now = new Date().toISOString();
-              await c.env.DB.prepare(
-                "INSERT INTO articles (source_id, original_url, title, content, published_at, created_at, translation_status) VALUES (?, ?, ?, ?, ?, ?, 'pending')"
-              ).bind(source.id, link, title, title, now, now).run();
-              newlyInserted++;
-            }
-          }
-        }
-      }
-    } catch (e) {}
-
-    return c.json({ success: true, data: { newlyInserted }, error: null }, 200);
   } catch (err: any) {
     return c.json({ success: false, data: null, error: err.message }, 500);
   }
