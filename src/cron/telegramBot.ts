@@ -59,7 +59,7 @@ export function formatTelegramMessage(payload: {
   ];
 
   if (payload.sourceUrl) {
-    parts.push(`🌐 <a href="${payload.sourceUrl}">مطالعه متن کامل و گزارش تفصیلی در وب‌سایت</a>\n`);
+    parts.push(`🌐 <a href="${payload.sourceUrl}">مطالعه متن کامل در وب‌سایت</a>\n`);
   }
 
   if (tagsFormatted) {
@@ -137,6 +137,72 @@ export async function sendNewsToTelegram(payload: TelegramNewsPayload): Promise<
     text: formattedText,
     parse_mode: 'HTML',
   });
+}
+
+/**
+ * Distribute a translated article to Telegram channel and log result to DB Archive
+ */
+export async function distributeToTelegram(
+  env: Env,
+  translated: {
+    article_id: number;
+    translation_id?: number;
+    title: string;
+    content: string;
+    summary?: string;
+    tags?: string[];
+    source_url?: string;
+  }
+): Promise<TelegramResponse> {
+  const token = env.TELEGRAM_BOT_TOKEN || (typeof process !== 'undefined' ? process.env.TELEGRAM_BOT_TOKEN : undefined);
+  const chatId = env.TELEGRAM_CHAT_ID || (typeof process !== 'undefined' ? process.env.TELEGRAM_CHAT_ID : undefined) || '@updaaate_crypto';
+
+  if (!token) {
+    console.warn('[Telegram] Skipping Telegram publish: TELEGRAM_BOT_TOKEN not set');
+    return { ok: false, description: 'Telegram token not set' };
+  }
+
+  const response = await sendNewsToTelegram({
+    botToken: token,
+    chatId,
+    title: translated.title,
+    content: translated.summary || translated.content,
+    tags: translated.tags,
+    sourceUrl: translated.source_url,
+  });
+
+  const targetDb = env.DB_ARCHIVE || env.DB;
+  if (targetDb) {
+    try {
+      const messageId = response.ok ? String(response.result?.message_id) : null;
+      await targetDb.prepare(`
+        INSERT INTO distributions (article_id, translation_id, platform, platform_post_id, platform_url, status, published_at, error_message)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)
+      `).bind(
+        translated.article_id,
+        translated.translation_id || null,
+        'telegram',
+        messageId,
+        messageId ? `https://t.me/${chatId.replace('@', '')}/${messageId}` : null,
+        response.ok ? 'published' : 'failed',
+        response.ok ? null : response.description
+      ).run();
+
+      await targetDb.prepare(`
+        INSERT INTO operation_logs (operation, article_id, status, message, created_at)
+        VALUES (?, ?, ?, ?, datetime('now'))
+      `).bind(
+        'telegram_distribution',
+        translated.article_id,
+        response.ok ? 'success' : 'failed',
+        response.ok ? `Sent message ID ${messageId}` : response.description
+      ).run();
+    } catch (err: any) {
+      console.warn('[Telegram] Failed to log distribution record:', err.message);
+    }
+  }
+
+  return response;
 }
 
 /**

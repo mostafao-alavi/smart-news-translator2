@@ -561,3 +561,213 @@ export async function translator(env: Env): Promise<{ processed: number; success
     errors,
   };
 }
+
+/**
+ * Translates a single article by ID and saves to D1 Archive (and Primary DB)
+ */
+export async function translateArticle(
+  env: Env,
+  articleId: number
+): Promise<{
+  article_id: number;
+  translation_id?: number;
+  title: string;
+  content: string;
+  summary: string;
+  suggested_titles: string[];
+  tags: string[];
+  meta_description: string;
+  source_url?: string;
+  source_name?: string;
+  featured_image?: string | null;
+  model_used: string;
+}> {
+  console.log(`[Translator] Translating article ID ${articleId}...`);
+
+  // 1. Fetch article & full text from Primary DB
+  let articleRow: any = null;
+  try {
+    articleRow = await env.DB.prepare(`
+      SELECT 
+        a.id, 
+        a.source_id, 
+        s.name as source_name,
+        a.title, 
+        COALESCE(a.link, a.original_url) as link, 
+        a.summary, 
+        COALESCE(ac.full_text, a.content, a.title) as full_text, 
+        COALESCE(a.featured_image, ai.image_url) as featured_image
+      FROM articles a
+      LEFT JOIN sources s ON a.source_id = s.id
+      LEFT JOIN article_contents ac ON a.id = ac.article_id
+      LEFT JOIN article_images ai ON a.id = ai.article_id AND ai.is_featured = 1
+      WHERE a.id = ?
+    `).bind(articleId).first();
+  } catch {
+    // Fallback simple query
+    articleRow = await env.DB.prepare(
+      'SELECT id, source_id, title, COALESCE(link, original_url) as link, content as full_text, featured_image FROM articles WHERE id = ?'
+    ).bind(articleId).first();
+  }
+
+  if (!articleRow) {
+    throw new Error(`Article with ID ${articleId} not found in DB`);
+  }
+
+  // Update status to processing
+  try {
+    await env.DB.prepare("UPDATE articles SET status = 'translating', translation_status = 'processing' WHERE id = ?").bind(articleId).run();
+  } catch {}
+
+  const rawTitle = articleRow.title || 'بدون عنوان';
+  const rawContent = articleRow.full_text || articleRow.summary || rawTitle;
+
+  // 2. Stage 1: Persian Translation
+  const [titleRes, contentRes] = await Promise.all([
+    translateTextWithAI(env, rawTitle, 'english', 'persian'),
+    translateTextWithAI(env, rawContent, 'english', 'persian'),
+  ]);
+
+  const modelUsed = titleRes.modelUsed || contentRes.modelUsed || 'workers-ai';
+  const translatedTitle = titleRes.translatedText || rawTitle;
+  const translatedContent = contentRes.translatedText || rawContent;
+
+  // 3. Stage 2: SEO & Meta Generation
+  const seoRes = await generateSeoMetadataWithAI(env, translatedTitle, translatedContent, modelUsed);
+
+  // 4. Save to Archive DB
+  const translationRecord = {
+    article_id: articleId,
+    translated_title: translatedTitle,
+    translated_content: translatedContent,
+    translated_summary: seoRes.meta_description,
+    meta_description: seoRes.meta_description,
+    suggested_titles: seoRes.suggested_titles,
+    tags: seoRes.tags,
+    ai_model: modelUsed,
+  };
+
+  const savedTransId = await saveTranslation(env, translationRecord);
+
+  // 5. Update status in Primary DB
+  try {
+    await env.DB.prepare("UPDATE articles SET status = 'translated', translation_status = 'completed' WHERE id = ?").bind(articleId).run();
+  } catch {}
+
+  return {
+    article_id: articleId,
+    translation_id: savedTransId || undefined,
+    title: translatedTitle,
+    content: translatedContent,
+    summary: seoRes.meta_description,
+    suggested_titles: seoRes.suggested_titles,
+    tags: seoRes.tags,
+    meta_description: seoRes.meta_description,
+    source_url: articleRow.link,
+    source_name: articleRow.source_name || 'Cointelegraph',
+    featured_image: articleRow.featured_image || null,
+    model_used: modelUsed,
+  };
+}
+
+/**
+ * Saves translated news to D1 Archive (and Primary DB)
+ */
+export async function saveTranslation(
+  env: Env,
+  translation: {
+    article_id: number;
+    translated_title: string;
+    translated_content: string;
+    translated_summary?: string;
+    meta_description?: string;
+    suggested_titles?: string[] | string;
+    tags?: string[] | string;
+    ai_model?: string;
+  }
+): Promise<number | null> {
+  const titlesJson = Array.isArray(translation.suggested_titles)
+    ? JSON.stringify(translation.suggested_titles)
+    : (translation.suggested_titles || null);
+
+  const tagsJson = Array.isArray(translation.tags)
+    ? JSON.stringify(translation.tags)
+    : (translation.tags || null);
+
+  let translationId: number | null = null;
+
+  // 1. Save to D1 Archive if available
+  if (env.DB_ARCHIVE) {
+    try {
+      const res = await env.DB_ARCHIVE.prepare(`
+        INSERT INTO translations (
+          article_id, 
+          translated_title, 
+          translated_content, 
+          translated_summary, 
+          meta_description, 
+          suggested_titles, 
+          tags, 
+          ai_model, 
+          translated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `).bind(
+        translation.article_id,
+        translation.translated_title,
+        translation.translated_content,
+        translation.translated_summary || null,
+        translation.meta_description || null,
+        titlesJson,
+        tagsJson,
+        translation.ai_model || 'workers-ai'
+      ).run();
+
+      translationId = Number(res.meta?.last_row_id) || null;
+    } catch (err: any) {
+      console.warn(`[Translator] Failed to insert into DB_ARCHIVE:`, err.message);
+    }
+  }
+
+  // 2. Also save to Primary DB for unified UI viewing & backward compatibility
+  if (env.DB) {
+    try {
+      // Remove previous translation for this article if exists
+      try {
+        await env.DB.prepare('DELETE FROM translations WHERE article_id = ?').bind(translation.article_id).run();
+      } catch {}
+
+      const primRes = await env.DB.prepare(`
+        INSERT INTO translations (
+          article_id, 
+          translated_title, 
+          translated_content, 
+          suggested_titles, 
+          tags, 
+          meta_description, 
+          ai_model,
+          model_used,
+          translated_at, 
+          approval_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'approved')
+      `).bind(
+        translation.article_id,
+        translation.translated_title,
+        translation.translated_content,
+        titlesJson,
+        tagsJson,
+        translation.meta_description || null,
+        translation.ai_model || 'workers-ai',
+        translation.ai_model || 'workers-ai'
+      ).run();
+
+      if (!translationId) {
+        translationId = Number(primRes.meta?.last_row_id) || null;
+      }
+    } catch (primErr: any) {
+      console.warn(`[Translator] Failed to insert translation in DB Primary:`, primErr.message);
+    }
+  }
+
+  return translationId;
+}
+

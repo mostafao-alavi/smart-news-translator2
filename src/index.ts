@@ -1,9 +1,10 @@
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/cloudflare-workers';
 import apiRoutes, { pruneOldArticles } from './api/routes.ts';
-import { scraper, extractFullArticleText } from './cron/scraper.ts';
-import { translator } from './cron/translator.ts';
-import { wpSyncPublisher } from './cron/wpSync.ts';
+import { scrapeCointelegraph, scrapeFullArticle, saveArticle, extractFullArticleText } from './cron/scraper.ts';
+import { translateArticle } from './cron/translator.ts';
+import { distributeToWordPress } from './cron/wpSync.ts';
+import { distributeToTelegram } from './cron/telegramBot.ts';
 import { Env, ApiResponse, ScheduledEvent, ExecutionContext, MessageBatch } from './types.ts';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -38,14 +39,15 @@ app.get('/health', (c) => {
     success: true,
     data: {
       status: 'operational',
-      worker: 'news-worker',
+      worker: 'smart-news-translator2',
+      focus: 'Cointelegraph -> WordPress & Telegram',
       timestamp: new Date().toISOString(),
     },
     error: null,
   });
 });
 
-// Serve static assets (js, css, images) from ./dist
+// Serve static assets from ./dist
 app.use('/assets/*', serveStatic({ root: './' }));
 app.use('/*.js', serveStatic({ root: './' }));
 app.use('/*.css', serveStatic({ root: './' }));
@@ -54,7 +56,7 @@ app.use('/*.png', serveStatic({ root: './' }));
 app.use('/*.ico', serveStatic({ root: './' }));
 app.use('/*.json', serveStatic({ root: './' }));
 
-// SPA Fallback: Serve index.html for all client-side navigation routes (/settings, /sources, /news, etc.)
+// SPA Fallback
 app.get('*', serveStatic({
   path: './index.html',
   rewriteRequestPath: () => './index.html',
@@ -62,132 +64,125 @@ app.get('*', serveStatic({
 
 // Cloudflare Worker export with fetch, scheduled, and queue handlers
 export default {
-  // Fetch event handler for HTTP requests
   fetch: app.fetch,
 
-  // Scheduled event handler for Cloudflare Cron Triggers (crons = ["0 * * * *"])
+  // Scheduled event handler for Cloudflare Cron Triggers (crons = ["*/15 * * * *"])
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    console.log(`Cron trigger executed at ${new Date().toISOString()} (Cron: ${event.cron})`);
+    console.log(`[Cron] 15-Minute trigger executed at ${new Date().toISOString()} (Cron: ${event.cron})`);
 
-    // Use ctx.waitUntil to ensure background tasks complete fully before worker terminates
     ctx.waitUntil(
       (async () => {
         try {
-          // 1. Run D1 Data Pruning / Garbage Collection (Clear content older than 7 days to maintain < 500MB limit)
-          console.log('Starting D1 Garbage Collection step...');
-          const pruneResult = await pruneOldArticles(env.DB);
-          console.log('D1 Pruning finished:', JSON.stringify(pruneResult));
+          // 0. Garbage Collection / Pruning
+          if (env.DB) {
+            try {
+              await pruneOldArticles(env.DB);
+            } catch {}
+          }
 
-          // 2. Run RSS Scraper
-          console.log('Starting scheduled scraper step...');
-          const scraperResult = await scraper(env);
-          console.log('Scraper finished:', JSON.stringify(scraperResult));
+          // 1. Scrape Cointelegraph RSS
+          console.log('[Cron] Step 1: Scraping Cointelegraph RSS...');
+          const articles = await scrapeCointelegraph(env);
+          console.log(`[Cron] Found ${articles.length} new articles to process`);
 
-          // 3. Run AI Translator
-          console.log('Starting scheduled translator step...');
-          const translatorResult = await translator(env);
-          console.log('Translator finished:', JSON.stringify(translatorResult));
-        } catch (err) {
-          console.error('Fatal error during scheduled cron task execution:', err);
+          for (const article of articles) {
+            try {
+              // 2. Scrape full text + all media
+              console.log(`[Cron] Step 2: Extracting full article: ${article.link}`);
+              const fullContent = await scrapeFullArticle(env, article.link);
+
+              // 3. Save to D1 Primary (news_db)
+              console.log(`[Cron] Step 3: Saving article to D1 Primary...`);
+              const articleId = await saveArticle(
+                env, 
+                article, 
+                fullContent, 
+                fullContent.images
+              );
+
+              if (articleId) {
+                // 4. Send to Translate Queue
+                if (env.TRANSLATE_QUEUE) {
+                  console.log(`[Cron] Step 4: Dispatching article ID ${articleId} to TRANSLATE_QUEUE`);
+                  await env.TRANSLATE_QUEUE.send({
+                    articleId: articleId,
+                    priority: 'normal',
+                  });
+                } else {
+                  // Direct translation fallback if queue binding is not attached
+                  console.log(`[Cron] No queue binding; running direct inline translation for ID ${articleId}...`);
+                  const translated = await translateArticle(env, articleId);
+                  const wpRes = await distributeToWordPress(env, translated);
+                  await distributeToTelegram(env, {
+                    ...translated,
+                    source_url: wpRes.postUrl || translated.source_url,
+                  });
+                }
+              }
+            } catch (itemErr: any) {
+              console.error(`[Cron] Error processing article ${article.link}:`, itemErr.message);
+            }
+          }
+
+          console.log('[Cron] 15-minute cron execution finished successfully');
+        } catch (err: any) {
+          console.error('[Cron] Fatal error during scheduled execution:', err);
         }
       })()
     );
   },
 
-  // Queue consumer handler for asynchronous Cloudflare Queues
+  // Queue consumer handler for Cloudflare Queues
   async queue(batch: MessageBatch<any>, env: Env): Promise<void> {
-    console.log(`Processing queue batch for queue: ${batch.queue} (${batch.messages.length} messages)`);
+    console.log(`[Queue] Processing ${batch.messages.length} messages for queue: ${batch.queue}`);
 
-    if (batch.queue === 'news-translate-queue') {
-      for (const message of batch.messages) {
-        try {
-          let rawText = message.body?.text || '';
-          if (!rawText && message.body?.hash && env.CONTENT_BUCKET) {
-            try {
-              const rawFile = await env.CONTENT_BUCKET.get(`english/${message.body.hash}.txt`);
-              if (rawFile) {
-                rawText = await rawFile.text();
-              }
-            } catch (r2Err) {
-              console.warn('R2 bucket fetch skipped/paused:', r2Err);
-            }
+    for (const message of batch.messages) {
+      try {
+        if (batch.queue === 'news-translate-queue') {
+          const articleId = message.body?.articleId || message.body?.id;
+          if (!articleId) {
+            message.ack();
+            continue;
           }
 
-          // Fast classification with Cloudflare Workers AI
-          let category = 'technology';
-          if (env.AI && rawText) {
-            try {
-              const categoryResult = await env.AI.run('@cf/facebook/bart-large-mnli', {
-                text: rawText,
-                candidate_labels: ['technology', 'cybersecurity', 'ai', 'business'],
-              });
-              if (categoryResult?.labels?.[0]) {
-                category = categoryResult.labels[0];
-              }
-            } catch (aiErr) {
-              console.warn('Workers AI classification skipped:', aiErr);
-            }
-          }
+          console.log(`[Queue] Starting translation & distribution for article ID ${articleId}`);
 
-          // Update metadata & category in D1 Database
-          if (env.DB && message.body?.id) {
-            await env.DB.prepare("UPDATE articles SET status = 'translated', category = ? WHERE id = ?")
-              .bind(category, message.body.id)
-              .run();
-          }
+          // 5. Translate with Workers AI (or Gemini fallback) + Save to D1 Archive
+          const translated = await translateArticle(env, Number(articleId));
+
+          // 6. Distribute to WordPress (with category 3, publish status, featured image)
+          const wpRes = await distributeToWordPress(env, translated);
+
+          // 7. Distribute to Telegram Channel (@updaaate_crypto)
+          await distributeToTelegram(env, {
+            ...translated,
+            source_url: wpRes.postUrl || translated.source_url,
+          });
 
           message.ack();
-        } catch (err) {
-          console.error('Error processing translate queue message:', err);
-          message.retry();
-        }
-      }
-    } else if (batch.queue === 'news-scrape-queue') {
-      for (const message of batch.messages) {
-        try {
-          const { url, sourceSelector, hash, id } = message.body || {};
-          console.log('Processing scrape queue message for feed/article:', url);
-
+        } else if (batch.queue === 'news-scrape-queue') {
+          const { url } = message.body || {};
           if (url) {
-            // 1. Download HTML and extract full article text using Cheerio
-            const fullText = await extractFullArticleText(url, sourceSelector);
-
-            if (fullText && fullText.length > 50) {
-              const fileHash = hash || `article-${id || Date.now()}`;
-
-              // 2. Direct storage into Cloudflare D1 database (Focus on D1)
-              if (env.DB && id) {
-                await env.DB.prepare('UPDATE articles SET content = ? WHERE id = ?')
-                  .bind(fullText, id)
-                  .run();
-              }
-
-              // Optional: Save to R2 if available
-              if (env.CONTENT_BUCKET) {
-                try {
-                  await env.CONTENT_BUCKET.put(`english/${fileHash}.txt`, fullText);
-                } catch (r2Err) {
-                  console.warn('R2 Storage skipped:', r2Err);
-                }
-              }
-
-              // 3. Dispatch message to translate queue
+            const fullContent = await scrapeFullArticle(env, url);
+            if (fullContent.full_text && message.body?.id) {
+              await saveArticle(
+                env, 
+                { source_id: 1, title: message.body.title || '', link: url, published_at: new Date().toISOString() }, 
+                fullContent, 
+                fullContent.images
+              );
               if (env.TRANSLATE_QUEUE) {
-                await env.TRANSLATE_QUEUE.send({
-                  id: id,
-                  hash: fileHash,
-                  text: fullText,
-                });
+                await env.TRANSLATE_QUEUE.send({ articleId: message.body.id });
               }
-            } else {
-              console.log(`Failed to extract full text for: ${url}`);
             }
           }
           message.ack();
-        } catch (err) {
-          console.error('Error in news-scrape-queue handler:', err);
-          message.retry();
+        } else {
+          message.ack();
         }
+      } catch (msgErr: any) {
+        console.error(`[Queue] Error processing message:`, msgErr);
+        message.retry();
       }
     }
   },

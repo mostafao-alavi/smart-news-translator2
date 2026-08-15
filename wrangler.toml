@@ -10,14 +10,28 @@ enabled = true
 directory = "./dist"
 not_found_handling = "single-page-application"
 
+# D1 Primary — اخبار، محتوا، تصاویر
 [[d1_databases]]
 binding = "DB"
 database_name = "news_db"
 database_id = "2815bd80-f483-4f9b-872d-93047309ed13"
 
+# D1 Archive — ترجمه‌ها، توزیع‌ها، لاگ‌ها
+[[d1_databases]]
+binding = "DB_ARCHIVE"
+database_name = "news_archive_db"
+database_id = "efe58467-d7ce-4f36-ad57-592b694f8a0e"
+
+# KV — کش RSS
+[[kv_namespaces]]
+binding = "CACHE"
+id = "news_cache"
+
+# Workers AI
 [ai]
 binding = "AI"
 
+# Queues
 [[queues.producers]]
 binding = "SCRAPE_QUEUE"
 queue = "news-scrape-queue"
@@ -36,11 +50,12 @@ queue = "news-translate-queue"
 max_batch_size = 1
 max_concurrency = 1
 
+# Cron هر ۱۵ دقیقه
 [triggers]
-crons = ["0 * * * *"]
+crons = ["*/15 * * * *"]
 
 [vars]
 WP_API_URL = "https://updaaate.ir/wp-json/wp/v2/"
-WP_POST_STATUS = "draft"
+WP_POST_STATUS = "publish"
 WP_CATEGORY_ID = "3"
 TELEGRAM_CHAT_ID = "@updaaate_crypto"
