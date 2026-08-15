@@ -270,8 +270,13 @@ export async function testWordPressConnection(
       };
     }
 
-    // Replace /posts with /users/me to check authenticated user details
-    const userMeEndpoint = cleanUrl.replace(/\/posts\/?$/, '/users/me');
+    // Resolve /users/me endpoint correctly regardless of whether apiUrl ends with /posts or /wp/v2/
+    let userMeEndpoint = cleanUrl;
+    if (userMeEndpoint.endsWith('/posts') || userMeEndpoint.endsWith('/posts/')) {
+      userMeEndpoint = userMeEndpoint.replace(/\/posts\/?$/, '/users/me');
+    } else {
+      userMeEndpoint = `${userMeEndpoint.replace(/\/+$/, '')}/users/me`;
+    }
     const authHeader = `Basic ${btoa(`${cleanUser}:${cleanPass}`)}`;
 
     const response = await fetch(userMeEndpoint, {

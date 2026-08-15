@@ -7,6 +7,7 @@ import { ScrapingRulesTab, ContentFilteringTab, SourceProfilingTab, SourceHealth
 interface InputSourcesTabProps {
   sources: SourceItem[];
   loading: boolean;
+  error?: boolean;
   onAddSource: (name: string, url: string, category?: string) => Promise<boolean>;
   onDeleteSource: (id: number) => void;
   onUpdateSource: (id: number, data: Partial<SourceItem>) => Promise<boolean>;
@@ -21,6 +22,7 @@ interface InputSourcesTabProps {
 export const InputSourcesTab: React.FC<InputSourcesTabProps> = ({
   sources,
   loading,
+  error = false,
   onAddSource,
   onDeleteSource,
   onUpdateSource,
@@ -109,6 +111,7 @@ export const InputSourcesTab: React.FC<InputSourcesTabProps> = ({
            <SourcesTab
              sources={sources}
              loading={loading}
+             error={error}
              onAddSource={onAddSource}
              onDeleteSource={onDeleteSource}
              onUpdateSource={onUpdateSource}

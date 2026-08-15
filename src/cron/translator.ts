@@ -1,8 +1,16 @@
-import { Env, Article } from '../types';
+import { Env, Article, SeoMetadata } from '../types';
+import { GoogleGenAI } from '@google/genai';
 
-interface TranslationResult {
+export interface TranslationResult {
   translatedText: string;
   modelUsed: string;
+}
+
+export interface SeoMetadataResult {
+  suggested_titles: string[];
+  tags: string[];
+  meta_description: string;
+  modelUsed?: string;
 }
 
 /**
@@ -52,6 +60,16 @@ const M2M_LANG_MAP: Record<string, string> = {
   tr: 'tr',
 };
 
+let geminiClient: GoogleGenAI | null = null;
+function getGeminiClient(apiKey?: string): GoogleGenAI | null {
+  const key = apiKey || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined);
+  if (!key) return null;
+  if (!geminiClient) {
+    geminiClient = new GoogleGenAI({ apiKey: key });
+  }
+  return geminiClient;
+}
+
 /**
  * Model Router Selection based on target language
  */
@@ -78,7 +96,8 @@ function selectTranslationModel(targetLang: string) {
 }
 
 /**
- * Router & Translation caller with flexible AI Model selection
+ * STAGE 1: High-Quality Journalistic Translation
+ * Translates English text to fluent, idiomatic Persian using Gemini / Workers AI.
  */
 export async function translateTextWithAI(
   env: Env, 
@@ -91,55 +110,79 @@ export async function translateTextWithAI(
     return { translatedText: '', modelUsed: 'none' };
   }
 
-  const truncatedText = text.slice(0, 1200);
-  const modelToUse = preferredModel || '@cf/meta/m2m100-1.2b';
+  const truncatedText = text.slice(0, 4000);
+  const apiKey = env.GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined);
+  const isGeminiRequested = preferredModel === 'gemini-3.7-flash' || preferredModel === 'gemini-2.5-flash' || preferredModel === 'gemini-flash-latest' || !preferredModel;
 
-  // 1. If Gemini is explicitly chosen or used as fallback
-  if (modelToUse === 'gemini-2.5-flash' || (!env.AI && env.GEMINI_API_KEY)) {
-    if (env.GEMINI_API_KEY) {
-      try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{
-              parts: [{
-                text: `You are a professional translator from ${sourceLang} to ${targetLang}. Translate the following text cleanly and accurately into fluent ${targetLang}. Preserve all Markdown formatting (including links, image tags, lists, and headings). Output ONLY the translated text without explanations or quotes:\n\n${truncatedText}`
-              }]
-            }]
-          })
+  const translationPrompt = `شما یک مترجم ارشد و روزنامه‌نگار حرفه‌ای در حوزه فناوری، بازارهای مالی و ارز دیجیتال برای رسانه معتبر «هزاردستان» هستید.
+متن انگلیسی زیر را به زبان فارسی روان، سلیس و با لحن ژورنالیستی و جذاب ترجمه کنید.
+
+دستورالعمل‌های الزامی:
+۱. اصطلاحات تخصصی حوزه تکنولوژی، رمزارز و اقتصاد را به صورت دقیق و مصطلح در رسانه‌های معتبر ترجمه کنید (مثلاً: Staking -> استیکینگ / سپرده‌گذاری، Liquidity Pool -> استخر نقدینگی، Bear Market -> بازار خرسی / نزولی، Yield Farming -> کشت سود، Serverless -> بدون سرور، Proof of Stake -> اثبات سهام، Hedge Fund -> صندوق پوشش ریسک، Cash Flow -> جریان نقدی).
+۲. از ترجمه تحت‌اللفظی و نامفهوم اکیداً پرهیز کنید؛ جملات باید ساختار دستوری طبیعی و فاخر زبان فارسی داشته باشند.
+۳. کلیه قالب‌بندی‌های Markdown، لینک‌ها، عناوین و بولت‌پوینت‌ها را عیناً حفظ کنید.
+۴. خروجی باید صرفاً متن ترجمه شده به فارسی باشد، بدون هیچ‌گونه مقدمه، توضیح اضافه، یا علامت نقل‌قول انگلیسی.
+
+متن اصلی انگلیسی:
+${truncatedText}`;
+
+  // 1. Try Gemini API first (via GoogleGenAI SDK or direct HTTP)
+  if (apiKey && (isGeminiRequested || !env.AI)) {
+    try {
+      const ai = getGeminiClient(apiKey);
+      if (ai) {
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.7-flash',
+          contents: translationPrompt,
         });
-
-        if (response.ok) {
-          const json: any = await response.json();
-          const translated = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-          if (translated) {
-            return { translatedText: translated, modelUsed: 'gemini-2.5-flash' };
-          }
+        const translated = response?.text?.trim();
+        if (translated) {
+          return { translatedText: translated, modelUsed: 'gemini-3.7-flash' };
         }
-      } catch (e) {
-        console.warn('Gemini API translation failed:', e);
       }
+    } catch (sdkErr) {
+      console.warn('Gemini SDK translation failed, falling back to HTTP:', sdkErr);
+    }
+
+    // Direct HTTP fetch fallback for Gemini
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: translationPrompt }]
+          }]
+        })
+      });
+
+      if (response.ok) {
+        const json: any = await response.json();
+        const translated = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (translated) {
+          return { translatedText: translated, modelUsed: 'gemini-3.7-flash' };
+        }
+      }
+    } catch (e) {
+      console.warn('Gemini HTTP translation failed:', e);
     }
   }
 
   // 2. Workers AI execution if available
   if (env.AI) {
+    const modelToUse = preferredModel || '@cf/meta/m2m100-1.2b';
     try {
-      // Check if chosen model is an LLM Instruct/Chat model (e.g. Llama 3.1, Mistral, Qwen)
       if (
         modelToUse.includes('llama') || 
         modelToUse.includes('mistral') || 
         modelToUse.includes('qwen')
       ) {
-        const prompt = `[INST] You are an expert translator. Translate the following English news text into fluent, natural Persian (Farsi). Preserve all Markdown formatting (including links, image tags, lists, and headings). Output ONLY the translated Persian text without any English commentary, preamble, or quotation marks.\n\nText to translate:\n${truncatedText} [/INST]`;
-        
         const response: any = await env.AI.run(modelToUse, {
           messages: [
-            { role: 'system', content: 'You are a professional English to Persian (Farsi) news translator. Always preserve Markdown formatting.' },
-            { role: 'user', content: `Translate this news text into fluent Persian (Farsi), preserving Markdown:\n${truncatedText}` }
+            { role: 'system', content: 'شما مترجم ارشد خبر به فارسی روان و ژورنالیستی هستید. تمام ساختارهای Markdown را حفظ کنید.' },
+            { role: 'user', content: translationPrompt }
           ],
-          max_tokens: 800,
+          max_tokens: 1200,
         });
 
         const translated = response?.response?.trim() || response?.translated_text?.trim();
@@ -148,7 +191,7 @@ export async function translateTextWithAI(
         }
       }
 
-      // Default translation model (e.g. @cf/meta/m2m100-1.2b or @cf/ai4bharat/indictrans2-en-indic-1B)
+      // Fast translation model (e.g. @cf/meta/m2m100-1.2b)
       const route = selectTranslationModel(targetLang);
       const targetModel = modelToUse.startsWith('@cf/') ? modelToUse : route.model;
 
@@ -174,45 +217,177 @@ export async function translateTextWithAI(
         return { translatedText: response, modelUsed: targetModel };
       }
     } catch (err) {
-      console.warn(`Workers AI (${modelToUse}) execution failed, switching to fallback:`, err);
+      console.warn(`Workers AI (${modelToUse}) execution failed:`, err);
     }
   }
 
-  // 3. Secondary Fallback Attempt: Gemini API if not already tried
-  if (env.GEMINI_API_KEY && modelToUse !== 'gemini-2.5-flash') {
+  // 3. Graceful Fallback if offline
+  return {
+    translatedText: truncatedText,
+    modelUsed: preferredModel ? `${preferredModel} (fallback)` : 'fallback-raw'
+  };
+}
+
+/**
+ * STAGE 2: Advanced SEO & Journalistic Headline Engine
+ * Generates 3 alternative titles, 5 keyword tags, and a ~150-word meta description.
+ */
+export async function generateSeoMetadataWithAI(
+  env: Env,
+  articleTitle: string,
+  articleContent: string,
+  preferredModel?: string
+): Promise<SeoMetadataResult> {
+  const apiKey = env.GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined);
+  const truncatedContent = (articleContent || articleTitle).slice(0, 3000);
+
+  const seoPrompt = `شما یک مدیر سئو و سردبیر ارشد دیجیتال برای یک رسانه خبری مطرح (هزاردستان) هستید.
+بر اساس عنوان و متن خبر زیر، بسته کامل سئو و تیترزنی ژورنالیستی را به زبان فارسی تولید کنید.
+
+عنوان خبر: ${articleTitle}
+متن خبر:
+${truncatedContent}
+
+خروجی شما باید دقیقاً یک شیء JSON با ساختار زیر باشد:
+{
+  "suggested_titles": [
+    "تیتر جذاب اول (حداکثر ۸۰ کاراکتر، جذاب، کلیک‌خور و ژورنالیستی)",
+    "تیتر جذاب دوم (حداکثر ۸۰ کاراکتر، زاویه دید تحلیلی یا پرسشی)",
+    "تیتر جذاب سوم (حداکثر ۸۰ کاراکتر، متمرکز بر اثرگذاری و کلمه کلیدی اصلی)"
+  ],
+  "tags": [
+    "تگ ۱",
+    "تگ ۲",
+    "تگ ۳",
+    "تگ ۴",
+    "تگ ۵"
+  ],
+  "meta_description": "یک خلاصه سئومحور و جذاب در حدود ۱۰۰ الی ۱۵۰ کلمه به زبان فارسی روان که هم خلاصه خبر باشد و هم برای موتورهای جستجو بهینه‌سازی شده باشد و مخاطب را ترغیب به خواندن متن کامل کند."
+}
+
+قوانین الزامی:
+۱. آرایه suggested_titles باید دقیقاً ۳ تیتر متمایز، جذاب و روان (هر کدام حداکثر ۸۰ کاراکتر) باشد.
+۲. آرایه tags باید دقیقاً ۵ تگ کلمه کلیدی پرجستجو و مرتبط با موضوع خبر باشد.
+۳. فیلد meta_description باید یک خلاصه منسجم، جذاب و سئومحور در حدود ۱۰۰ تا ۱۵۰ کلمه باشد.
+۴. خروجی فقط و فقط باید فرمت معتبر JSON باشد بدون هیچ توضیح اضافی، بدون مقدمه و بدون کد بلاک markdown.`;
+
+  if (apiKey) {
+    // 1. Try Gemini SDK
     try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`, {
+      const ai = getGeminiClient(apiKey);
+      if (ai) {
+        const response = await ai.models.generateContent({
+          model: 'gemini-3.7-flash',
+          contents: seoPrompt,
+        });
+
+        const rawText = response?.text?.trim() || '';
+        const parsed = parseSeoJson(rawText);
+        if (parsed) {
+          return { ...parsed, modelUsed: 'gemini-3.7-flash' };
+        }
+      }
+    } catch (e) {
+      console.warn('Gemini SDK SEO generation failed:', e);
+    }
+
+    // 2. Try Gemini HTTP
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{
-            parts: [{
-              text: `Translate the following text accurately into fluent Persian (Farsi). Preserve all Markdown formatting (including links, image tags, lists, and headings):\n\n${truncatedText}`
-            }]
+            parts: [{ text: seoPrompt }]
           }]
         })
       });
 
       if (response.ok) {
         const json: any = await response.json();
-        const translated = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        if (translated) {
-          return { translatedText: translated, modelUsed: 'gemini-2.5-flash' };
+        const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+        const parsed = parseSeoJson(rawText);
+        if (parsed) {
+          return { ...parsed, modelUsed: 'gemini-3.7-flash' };
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('Gemini HTTP SEO generation failed:', e);
+    }
   }
 
-  // 4. Graceful Fallback
+  // 3. Fallback Heuristic SEO generator if AI is not available
+  return generateFallbackSeo(articleTitle, articleContent);
+}
+
+/**
+ * Safely parse JSON from LLM output (handles ```json fences or partial wrappers)
+ */
+function parseSeoJson(rawText: string): SeoMetadataResult | null {
+  if (!rawText) return null;
+  try {
+    let clean = rawText.trim();
+    if (clean.startsWith('```json')) {
+      clean = clean.replace(/^```json\s*/i, '').replace(/```\s*$/i, '');
+    } else if (clean.startsWith('```')) {
+      clean = clean.replace(/^```\s*/i, '').replace(/```\s*$/i, '');
+    }
+    
+    // Find first { and last }
+    const firstBrace = clean.indexOf('{');
+    const lastBrace = clean.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      clean = clean.slice(firstBrace, lastBrace + 1);
+    }
+
+    const obj = JSON.parse(clean);
+    if (obj && Array.isArray(obj.suggested_titles) && Array.isArray(obj.tags) && typeof obj.meta_description === 'string') {
+      return {
+        suggested_titles: obj.suggested_titles.slice(0, 3).map((t: string) => String(t).slice(0, 80).trim()),
+        tags: obj.tags.slice(0, 5).map((t: string) => String(t).trim()),
+        meta_description: obj.meta_description.trim()
+      };
+    }
+  } catch (err) {
+    console.warn('Failed to parse SEO JSON from AI output:', err, rawText);
+  }
+  return null;
+}
+
+/**
+ * Heuristic SEO fallback
+ */
+function generateFallbackSeo(title: string, content: string): SeoMetadataResult {
+  const cleanTitle = (title || 'خبر جدید').trim();
+  const cleanContent = (content || cleanTitle).replace(/[\r\n]+/g, ' ').trim();
+  
+  const suggested_titles = [
+    cleanTitle.slice(0, 80),
+    `تحلیل و بررسی: ${cleanTitle}`.slice(0, 80),
+    `همه جزئیات درباره ${cleanTitle}`.slice(0, 80),
+  ];
+
+  // Extract simple keywords
+  const tags = ['فناوری', 'اخبار روز', 'هوش مصنوعی', 'اقتصاد و بازار', 'هزاردستان'];
+
+  const meta_description = cleanContent.length > 250
+    ? cleanContent.slice(0, 250) + '... گزارش کامل رویداد و بررسی جزئیات این خبر را در وب‌سایت هزاردستان بخوانید.'
+    : `${cleanTitle}. گزارش کامل و تحلیل این رویداد در پایگاه خبری هزاردستان.`;
+
   return {
-    translatedText: truncatedText,
-    modelUsed: `${modelToUse} (fallback)`
+    suggested_titles,
+    tags,
+    meta_description,
+    modelUsed: 'heuristic-fallback'
   };
 }
 
 /**
  * Cron translator routine:
- * Fetches pending articles and translates title & content.
+ * 2-Stage Pipeline:
+ * Stage 1: Translates pending articles (title & content)
+ * Stage 2: Generates SEO metadata (suggested_titles, tags, meta_description)
+ * Stores full translation and SEO payload into D1 database.
  */
 export async function translator(env: Env): Promise<{ processed: number; successCount: number; errors: string[] }> {
   const startTime = Date.now();
@@ -221,13 +396,23 @@ export async function translator(env: Env): Promise<{ processed: number; success
   let successCount = 0;
 
   try {
-    // Ensure table has model_used and ai_model columns
-    try {
-      await env.DB.prepare("ALTER TABLE translations ADD COLUMN model_used TEXT").run();
-    } catch {}
-    try {
-      await env.DB.prepare("ALTER TABLE translations ADD COLUMN ai_model TEXT").run();
-    } catch {}
+    // Ensure table has all needed SEO columns
+    const columnsToEnsure = [
+      "ALTER TABLE translations ADD COLUMN model_used TEXT",
+      "ALTER TABLE translations ADD COLUMN ai_model TEXT",
+      "ALTER TABLE translations ADD COLUMN suggested_titles TEXT",
+      "ALTER TABLE translations ADD COLUMN tags TEXT",
+      "ALTER TABLE translations ADD COLUMN meta_description TEXT",
+      "ALTER TABLE translation_history ADD COLUMN suggested_titles TEXT",
+      "ALTER TABLE translation_history ADD COLUMN tags TEXT",
+      "ALTER TABLE translation_history ADD COLUMN meta_description TEXT"
+    ];
+
+    for (const alterSql of columnsToEnsure) {
+      try {
+        await env.DB.prepare(alterSql).run();
+      } catch {}
+    }
 
     const { results: pendingArticles } = await env.DB.prepare(
       "SELECT id, source_id, original_url, title, content, published_at, created_at, translation_status FROM articles WHERE translation_status = 'pending' ORDER BY created_at ASC LIMIT 5"
@@ -247,39 +432,86 @@ export async function translator(env: Env): Promise<{ processed: number; success
           "UPDATE articles SET translation_status = 'processing' WHERE id = ?"
         ).bind(article.id).run();
 
+        // ----------------------------------------------------
+        // STAGE 1: Journalistic Persian Translation
+        // ----------------------------------------------------
         const [titleResult, contentResult] = await Promise.all([
           translateTextWithAI(env, article.title, 'english', 'persian'),
-          translateTextWithAI(env, article.content, 'english', 'persian'),
+          translateTextWithAI(env, article.content || article.title, 'english', 'persian'),
         ]);
 
-        const modelUsed = titleResult.modelUsed || contentResult.modelUsed || '@cf/meta/m2m100-1.2b';
+        const modelUsed = titleResult.modelUsed || contentResult.modelUsed || 'gemini-2.5-flash';
         const finalTitle = titleResult.translatedText || article.title;
         const finalContent = contentResult.translatedText || article.content;
 
+        // ----------------------------------------------------
+        // STAGE 2: SEO & Headline Optimization
+        // ----------------------------------------------------
+        const seoResult = await generateSeoMetadataWithAI(
+          env,
+          finalTitle,
+          finalContent,
+          modelUsed
+        );
+
+        const titlesJson = JSON.stringify(seoResult.suggested_titles);
+        const tagsJson = JSON.stringify(seoResult.tags);
+        const metaDesc = seoResult.meta_description;
+
+        // Delete existing translation if re-translating
+        try {
+          await env.DB.prepare('DELETE FROM translations WHERE article_id = ?').bind(article.id).run();
+        } catch {}
+
+        // Insert into translations table
         await env.DB.prepare(`
           INSERT INTO translations (
             article_id, 
             target_language, 
             translated_title, 
             translated_content, 
+            suggested_titles,
+            tags,
+            meta_description,
             translated_at,
             model_used,
-            ai_model
-          ) VALUES (?, 'persian', ?, ?, datetime('now'), ?, ?)
+            ai_model,
+            approval_status
+          ) VALUES (?, 'persian', ?, ?, ?, ?, ?, datetime('now'), ?, ?, 'approved')
         `).bind(
           article.id,
           finalTitle,
           finalContent,
+          titlesJson,
+          tagsJson,
+          metaDesc,
           modelUsed,
           modelUsed
         ).run();
 
-        // Also record into translation_history
+        // Also record into translation_history log
         try {
           await env.DB.prepare(`
-            INSERT INTO translation_history (article_id, target_language, translated_title, translated_content, translated_at, model_used)
-            VALUES (?, 'persian', ?, ?, datetime('now'), ?)
-          `).bind(article.id, finalTitle, finalContent, modelUsed).run();
+            INSERT INTO translation_history (
+              article_id, 
+              target_language, 
+              translated_title, 
+              translated_content, 
+              suggested_titles,
+              tags,
+              meta_description,
+              translated_at, 
+              model_used
+            ) VALUES (?, 'persian', ?, ?, ?, ?, ?, datetime('now'), ?)
+          `).bind(
+            article.id, 
+            finalTitle, 
+            finalContent, 
+            titlesJson, 
+            tagsJson, 
+            metaDesc, 
+            modelUsed
+          ).run();
         } catch {}
 
         await env.DB.prepare(

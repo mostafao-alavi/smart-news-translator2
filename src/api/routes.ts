@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { Env, ApiResponse, Source, JoinedArticleNews, StatsData } from '../types.ts';
 import { wpSyncPublisher, testWordPressConnection } from '../cron/wpSync.ts';
+import { testBot, sendNewsToTelegram } from '../cron/telegramBot.ts';
 
 const api = new Hono<{ Bindings: Env }>();
 
@@ -138,7 +139,13 @@ export async function ensureTablesAndLogs(db: any, force: boolean = false) {
       "ALTER TABLE articles ADD COLUMN wp_error TEXT",
       "ALTER TABLE translations ADD COLUMN model_used TEXT",
       "ALTER TABLE translations ADD COLUMN ai_model TEXT",
-      "ALTER TABLE translations ADD COLUMN approval_status TEXT DEFAULT 'approved'"
+      "ALTER TABLE translations ADD COLUMN approval_status TEXT DEFAULT 'approved'",
+      "ALTER TABLE translations ADD COLUMN suggested_titles TEXT",
+      "ALTER TABLE translations ADD COLUMN tags TEXT",
+      "ALTER TABLE translations ADD COLUMN meta_description TEXT",
+      "ALTER TABLE translation_history ADD COLUMN suggested_titles TEXT",
+      "ALTER TABLE translation_history ADD COLUMN tags TEXT",
+      "ALTER TABLE translation_history ADD COLUMN meta_description TEXT"
     ];
 
     for (const sql of migrations) {
@@ -313,6 +320,19 @@ api.use('*', async (c, next) => {
   await next();
 });
 
+// Health check endpoint
+api.get('/health', (c) => {
+  return c.json({
+    success: true,
+    data: {
+      status: 'ok',
+      service: '1000-dastan-api',
+      timestamp: new Date().toISOString(),
+      version: '1.0.0'
+    }
+  });
+});
+
 // Helper for lightweight news list fetching (no bulk text transfer)
 const handleFetchNewsList = async (c: any) => {
   try {
@@ -337,6 +357,9 @@ const handleFetchNewsList = async (c: any) => {
         articles.wp_published_at,
         articles.wp_error,
         translations.translated_title,
+        translations.suggested_titles,
+        translations.tags,
+        translations.meta_description,
         translations.translated_at,
         COALESCE(translations.ai_model, translations.model_used) AS model_used
       FROM articles
@@ -392,6 +415,9 @@ const handleFetchArticleDetail = async (c: any) => {
         articles.wp_error,
         translations.translated_title,
         translations.translated_content,
+        translations.suggested_titles,
+        translations.tags,
+        translations.meta_description,
         translations.translated_at,
         COALESCE(translations.ai_model, translations.model_used) AS model_used
       FROM articles
@@ -937,7 +963,7 @@ api.post('/news/:id/translate', async (c) => {
       body = await c.req.json<{ model?: string }>();
     } catch {}
 
-    const selectedModel = body.model || '@cf/meta/m2m100-1.2b';
+    const selectedModel = body.model || 'gemini-2.5-flash';
 
     const article = await c.env.DB.prepare('SELECT * FROM articles WHERE id = ?').bind(id).first<any>();
     if (!article) {
@@ -945,14 +971,23 @@ api.post('/news/:id/translate', async (c) => {
     }
     await c.env.DB.prepare("UPDATE articles SET translation_status = 'processing' WHERE id = ?").bind(id).run();
 
-    const { translateTextWithAI } = await import('../cron/translator');
+    const { translateTextWithAI, generateSeoMetadataWithAI } = await import('../cron/translator');
 
+    // Stage 1: Translation
     const [titleRes, contentRes] = await Promise.all([
       translateTextWithAI(c.env, article.title, 'english', 'persian', selectedModel),
       translateTextWithAI(c.env, article.content || article.title, 'english', 'persian', selectedModel),
     ]);
 
     const modelUsed = titleRes.modelUsed || contentRes.modelUsed || selectedModel;
+    const finalTitle = titleRes.translatedText || article.title;
+    const finalContent = contentRes.translatedText || article.content || article.title;
+
+    // Stage 2: SEO & Headline generation
+    const seoRes = await generateSeoMetadataWithAI(c.env, finalTitle, finalContent, modelUsed);
+    const titlesJson = JSON.stringify(seoRes.suggested_titles);
+    const tagsJson = JSON.stringify(seoRes.tags);
+    const metaDesc = seoRes.meta_description;
 
     // Delete existing translation if any, then insert new translation
     await c.env.DB.prepare('DELETE FROM translations WHERE article_id = ?').bind(id).run();
@@ -963,14 +998,21 @@ api.post('/news/:id/translate', async (c) => {
         target_language, 
         translated_title, 
         translated_content, 
+        suggested_titles,
+        tags,
+        meta_description,
         translated_at,
         model_used,
-        ai_model
-      ) VALUES (?, 'persian', ?, ?, datetime('now'), ?, ?)
+        ai_model,
+        approval_status
+      ) VALUES (?, 'persian', ?, ?, ?, ?, ?, datetime('now'), ?, ?, 'approved')
     `).bind(
       id,
-      titleRes.translatedText || article.title,
-      contentRes.translatedText || article.content || article.title,
+      finalTitle,
+      finalContent,
+      titlesJson,
+      tagsJson,
+      metaDesc,
       modelUsed,
       modelUsed
     ).run();
@@ -978,17 +1020,29 @@ api.post('/news/:id/translate', async (c) => {
     // Also insert into translation_history table
     try {
       await c.env.DB.prepare(`
-        INSERT INTO translation_history (article_id, target_language, translated_title, translated_content, translated_at, model_used)
-        VALUES (?, 'persian', ?, ?, datetime('now'), ?)
+        INSERT INTO translation_history (
+          article_id, 
+          target_language, 
+          translated_title, 
+          translated_content, 
+          suggested_titles,
+          tags,
+          meta_description,
+          translated_at, 
+          model_used
+        ) VALUES (?, 'persian', ?, ?, ?, ?, ?, datetime('now'), ?)
       `).bind(
         id,
-        titleRes.translatedText || article.title,
-        contentRes.translatedText || article.content || article.title,
+        finalTitle,
+        finalContent,
+        titlesJson,
+        tagsJson,
+        metaDesc,
         modelUsed
       ).run();
     } catch {}
 
-    await recordSystemEvent(c.env.DB, 'ARTICLE_TRANSLATED', `ترجمه خبر شماره ${id} با مدل ${modelUsed}`);
+    await recordSystemEvent(c.env.DB, 'ARTICLE_TRANSLATED', `ترجمه و سئو ۲ مرحله‌ای خبر شماره ${id} با مدل ${modelUsed}`);
 
     await c.env.DB.prepare("UPDATE articles SET translation_status = 'completed' WHERE id = ?").bind(id).run();
 
@@ -996,8 +1050,11 @@ api.post('/news/:id/translate', async (c) => {
       success: true,
       data: {
         id,
-        translated_title: titleRes.translatedText || article.title,
-        translated_content: contentRes.translatedText || article.content,
+        translated_title: finalTitle,
+        translated_content: finalContent,
+        suggested_titles: seoRes.suggested_titles,
+        tags: seoRes.tags,
+        meta_description: metaDesc,
         model_used: modelUsed,
       },
       error: null
@@ -1007,7 +1064,7 @@ api.post('/news/:id/translate', async (c) => {
   }
 });
 
-// POST /api/news/custom - Insert custom article and translate with selected AI model
+// POST /api/news/custom - Insert custom article and translate with 2-stage AI model
 api.post('/news/custom', async (c) => {
   try {
     const body = await c.req.json<{ title?: string; content?: string; model?: string }>();
@@ -1016,7 +1073,7 @@ api.post('/news/custom', async (c) => {
     }
     const title = body.title.trim();
     const content = (body.content || title).trim();
-    const selectedModel = body.model || '@cf/meta/m2m100-1.2b';
+    const selectedModel = body.model || 'gemini-2.5-flash';
     const now = new Date().toISOString();
     const customUrl = `https://custom-entry.local/${Date.now()}`;
 
@@ -1033,14 +1090,23 @@ api.post('/news/custom', async (c) => {
 
     const articleId = result.meta.last_row_id as number;
 
-    const { translateTextWithAI } = await import('../cron/translator');
+    const { translateTextWithAI, generateSeoMetadataWithAI } = await import('../cron/translator');
 
+    // Stage 1: Translation
     const [titleRes, contentRes] = await Promise.all([
       translateTextWithAI(c.env, title, 'english', 'persian', selectedModel),
       translateTextWithAI(c.env, content, 'english', 'persian', selectedModel),
     ]);
 
     const modelUsed = titleRes.modelUsed || contentRes.modelUsed || selectedModel;
+    const finalTitle = titleRes.translatedText || title;
+    const finalContent = contentRes.translatedText || content;
+
+    // Stage 2: SEO & Headline generation
+    const seoRes = await generateSeoMetadataWithAI(c.env, finalTitle, finalContent, modelUsed);
+    const titlesJson = JSON.stringify(seoRes.suggested_titles);
+    const tagsJson = JSON.stringify(seoRes.tags);
+    const metaDesc = seoRes.meta_description;
 
     await c.env.DB.prepare(`
       INSERT INTO translations (
@@ -1048,14 +1114,21 @@ api.post('/news/custom', async (c) => {
         target_language, 
         translated_title, 
         translated_content, 
+        suggested_titles,
+        tags,
+        meta_description,
         translated_at,
         model_used,
-        ai_model
-      ) VALUES (?, 'persian', ?, ?, datetime('now'), ?, ?)
+        ai_model,
+        approval_status
+      ) VALUES (?, 'persian', ?, ?, ?, ?, ?, datetime('now'), ?, ?, 'approved')
     `).bind(
       articleId,
-      titleRes.translatedText || title,
-      contentRes.translatedText || content,
+      finalTitle,
+      finalContent,
+      titlesJson,
+      tagsJson,
+      metaDesc,
       modelUsed,
       modelUsed
     ).run();
@@ -1064,7 +1137,14 @@ api.post('/news/custom', async (c) => {
 
     return c.json({
       success: true,
-      data: { id: articleId, title, model_used: modelUsed },
+      data: { 
+        id: articleId, 
+        title: finalTitle, 
+        suggested_titles: seoRes.suggested_titles,
+        tags: seoRes.tags,
+        meta_description: metaDesc,
+        model_used: modelUsed 
+      },
       error: null
     }, 201);
   } catch (err: any) {
@@ -1661,6 +1741,72 @@ api.post('/wp-sync/test-connection', async (c) => {
       data: testRes,
       error: testRes.success ? null : testRes.message,
     }, testRes.success ? 200 : 400);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// POST /api/telegram/test-connection - Test Telegram Bot connectivity
+api.post('/telegram/test-connection', async (c) => {
+  try {
+    let body: { bot_token?: string; chat_id?: string } = {};
+    try {
+      body = await c.req.json();
+    } catch {}
+
+    const token = body.bot_token || c.env.TELEGRAM_BOT_TOKEN || (typeof process !== 'undefined' ? process.env.TELEGRAM_BOT_TOKEN : undefined);
+    const chatId = body.chat_id || c.env.TELEGRAM_CHAT_ID || (typeof process !== 'undefined' ? process.env.TELEGRAM_CHAT_ID : undefined) || '@updaaate_crypto';
+
+    if (!token) {
+      return c.json({
+        success: false,
+        data: null,
+        error: 'توکن ربات تلگرام (TELEGRAM_BOT_TOKEN) تنظیم نشده است.',
+      }, 400);
+    }
+
+    const testRes = await testBot(token, chatId);
+    return c.json({
+      success: testRes.ok,
+      data: testRes,
+      error: testRes.ok ? null : testRes.description,
+    }, testRes.ok ? 200 : 400);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// POST /api/telegram/send-news - Send article to Telegram channel
+api.post('/telegram/send-news', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { title, content, tags, source_url, chat_id, bot_token } = body;
+
+    if (!title || !content) {
+      return c.json({
+        success: false,
+        data: null,
+        error: 'عنوان (title) و متن (content) الزامی است.',
+      }, 400);
+    }
+
+    const token = bot_token || c.env.TELEGRAM_BOT_TOKEN || (typeof process !== 'undefined' ? process.env.TELEGRAM_BOT_TOKEN : undefined);
+    const chatId = chat_id || c.env.TELEGRAM_CHAT_ID || (typeof process !== 'undefined' ? process.env.TELEGRAM_CHAT_ID : undefined) || '@updaaate_crypto';
+
+    const sendRes = await sendNewsToTelegram({
+      botToken: token,
+      chatId,
+      title,
+      content,
+      tags: Array.isArray(tags) ? tags : (typeof tags === 'string' ? JSON.parse(tags) : []),
+      sourceUrl: source_url,
+    });
+
+    return c.json({
+      success: sendRes.ok,
+      data: sendRes,
+      error: sendRes.ok ? null : sendRes.description,
+    }, sendRes.ok ? 200 : 400);
   } catch (err: any) {
     return c.json({ success: false, data: null, error: err.message }, 500);
   }

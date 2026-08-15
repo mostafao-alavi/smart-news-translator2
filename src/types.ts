@@ -42,12 +42,21 @@ export interface Platform {
   created_at?: string;
 }
 
+export interface SeoMetadata {
+  suggested_titles: string[];
+  tags: string[];
+  meta_description: string;
+}
+
 export interface Translation {
   id?: number;
   article_id: number;
   target_language: string;
   translated_title: string;
   translated_content: string;
+  suggested_titles?: string[] | string | null;
+  tags?: string[] | string | null;
+  meta_description?: string | null;
   translated_at?: string;
   model_used?: string;
   approval_status?: 'pending' | 'approved' | 'rejected' | string;
@@ -60,6 +69,7 @@ export interface JoinedArticleNews {
   original_url: string;
   title: string;
   content?: string | null;
+  featured_image?: string | null;
   published_at: string;
   created_at: string;
   translation_status: string;
@@ -69,6 +79,9 @@ export interface JoinedArticleNews {
   wp_error?: string | null;
   translated_title: string | null;
   translated_content?: string | null;
+  suggested_titles?: string[] | string | null;
+  tags?: string[] | string | null;
+  meta_description?: string | null;
   translated_at: string | null;
   model_used?: string | null;
 }
@@ -183,4 +196,6 @@ export interface Env {
   WP_APPLICATION_PASSWORD?: string;
   WP_POST_STATUS?: string;
   WP_CATEGORY_ID?: string;
+  TELEGRAM_BOT_TOKEN?: string;
+  TELEGRAM_CHAT_ID?: string;
 }

@@ -1,24 +1,23 @@
 name = "smart-news-translator2"
 main = "src/index.ts"
 compatibility_date = "2026-07-23"
-compatibility_flags = [ "nodejs_compat" ]
+compatibility_flags = ["nodejs_compat"]
 
-# فعال‌سازی سیستم جدید لاگینگ کلودفلر برای مانیتورینگ سیستم
 [observability]
 enabled = true
 
-# ۱. دیتابیس D1 کلودفلر (ذخیره کامل متادیتا، اخبار، ترجمه‌ها و لاگ‌ها همراه با مدیریت حجم <500MB)
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "news_db"
 database_id = "2815bd80-f483-4f9b-872d-93047309ed13"
 
-# ۲. مدل‌های هوش مصنوعی بومی کلودفلر (Workers AI)
-[ai]
+[[ai]]
 binding = "AI"
 
-# ۳. پیکربندی صف‌های پردازش ناهمگام (Cloudflare Queues)
-# الف: پرتابگر به صف (Producers)
 [[queues.producers]]
 binding = "SCRAPE_QUEUE"
 queue = "news-scrape-queue"
@@ -27,32 +26,21 @@ queue = "news-scrape-queue"
 binding = "TRANSLATE_QUEUE"
 queue = "news-translate-queue"
 
-# ب: مصرف‌کننده صف‌ها (Consumers)
 [[queues.consumers]]
 queue = "news-scrape-queue"
-max_batch_size = 5 # حداکثر ۵ خبر همزمان جهت جلوگیری از Time-out
+max_batch_size = 5
 max_concurrency = 2
 
 [[queues.consumers]]
 queue = "news-translate-queue"
-max_batch_size = 1 # ترجمه تک‌به‌تک جهت رعایت دقیق نرخ درخواست‌ها (Rate Limit)
+max_batch_size = 1
 max_concurrency = 1
 
-# ۴. میزبانی فایل‌های فرانت‌اند SPA از پوشه ./dist
-[assets]
-directory = "./dist"
-not_found_handling = "single-page-application"
-
-# ۵. کرون‌جاب‌های زمان‌بندی‌شده (ساعتی جهت اسکرپ، ترجمه، انتشار وردپرس و پاکسازی D1)
 [triggers]
 crons = ["0 * * * *"]
 
-# ۶. متغیرهای عمومی تنظیمات وردپرس (updaaate.ir)
-# توجه: متغیرهای حساس مثل WP_APPLICATION_PASSWORD و WP_USERNAME باید با دستور زیر تعریف شوند:
-# npx wrangler secret put WP_APPLICATION_PASSWORD
-# npx wrangler secret put WP_USERNAME
 [vars]
-WP_API_URL = "https://updaaate.ir/wp-json/wp/v2/posts"
-WP_POST_STATUS = "publish"
-
-
+WP_API_URL = "https://updaaate.ir/wp-json/wp/v2/"
+WP_POST_STATUS = "draft"
+WP_CATEGORY_ID = "3"
+TELEGRAM_CHAT_ID = "@updaaate_crypto"

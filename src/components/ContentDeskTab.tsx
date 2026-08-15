@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { JoinedArticleNews } from '../types/client';
-import { Clock, CheckCircle2, Archive, Users } from 'lucide-react';
+import { Clock, CheckCircle2, Archive, Users, FileText, ArrowLeft } from 'lucide-react';
 import { SmartQueueTab, ReviewStudioTab, EditorialCollabTab, DeepArchiveTab } from './ContentDeskSubTabs';
+import { DatabaseErrorFallback } from './DatabaseErrorFallback';
+import { EmptyState } from './EmptyState';
 
 interface ContentDeskTabProps {
   news: JoinedArticleNews[];
   loading: boolean;
+  error?: boolean;
   onRefresh: () => void;
   onTriggerScraper: () => void;
   onTriggerTranslator: () => void;
@@ -14,12 +18,47 @@ interface ContentDeskTabProps {
   onCreateCustomArticle: (title: string, content: string, model?: string) => Promise<boolean>;
   isTriggeringScraper: boolean;
   isTriggeringTranslator: boolean;
+  onNavigateTab?: (tab: 'dashboard' | 'sources' | 'content-desk' | 'destinations' | 'reports' | 'settings', subTab?: string) => void;
   initialSubTab?: 'queue' | 'studio' | 'collab' | 'archive';
 }
 
 export const ContentDeskTab: React.FC<ContentDeskTabProps> = (props) => {
-  const { initialSubTab = 'queue', news } = props;
+  const { initialSubTab = 'queue', news, loading, error = false, onRefresh, onNavigateTab } = props;
   const [subTab, setSubTab] = useState<'queue' | 'studio' | 'collab' | 'archive'>(initialSubTab);
+  const navigate = useNavigate();
+
+  const handleGoToSources = () => {
+    if (onNavigateTab) {
+      onNavigateTab('sources');
+    } else {
+      navigate('/app/sources');
+    }
+  };
+
+  // 1. Error Fallback UI
+  if (error) {
+    return (
+      <DatabaseErrorFallback
+        message="دیتابیس در حال بازسازی است. لطفاً چند دقیقه دیگر تلاش کنید."
+        onRetry={onRefresh}
+        isRetrying={loading}
+      />
+    );
+  }
+
+  // 2. Empty State UI (when not loading and news array is empty)
+  if (!loading && news.length === 0) {
+    return (
+      <EmptyState
+        icon={FileText}
+        title="هنوز ترجمه‌ای ثبت نشده است"
+        description="منتظر اجرای خودکار اسکرپر باشید یا از تب «منابع» یک منبع اضافه کنید."
+        actionText="رفتن به منابع"
+        actionIcon={ArrowLeft}
+        onAction={handleGoToSources}
+      />
+    );
+  }
 
   // Filtered news subsets
   const pendingNews = news.filter((item) => item.translation_status === 'pending' || !item.translated_title);

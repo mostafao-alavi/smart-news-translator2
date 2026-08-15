@@ -11,6 +11,9 @@ export interface JoinedArticleNews {
   translation_status: 'pending' | 'processing' | 'completed' | 'failed';
   translated_title: string | null;
   translated_content?: string | null;
+  suggested_titles?: string[] | string | null;
+  tags?: string[] | string | null;
+  meta_description?: string | null;
   translated_at: string | null;
   model_used?: string | null;
 }

@@ -44,6 +44,10 @@ export const AppDashboard: React.FC = () => {
   const [loadingSources, setLoadingSources] = useState<boolean>(true);
   const [loadingStats, setLoadingStats] = useState<boolean>(true);
 
+  const [newsError, setNewsError] = useState<boolean>(false);
+  const [sourcesError, setSourcesError] = useState<boolean>(false);
+  const [statsError, setStatsError] = useState<boolean>(false);
+
   const [isTriggeringScraper, setIsTriggeringScraper] = useState<boolean>(false);
   const [isTriggeringTranslator, setIsTriggeringTranslator] = useState<boolean>(false);
 
@@ -59,16 +63,23 @@ export const AppDashboard: React.FC = () => {
   // Fetch News from GET /api/news
   const fetchNews = async () => {
     setLoadingNews(true);
+    setNewsError(false);
     try {
       const res = await fetch('/api/news');
       if (res.ok) {
         const json = await res.json();
-        if (json.success && json.data) {
+        if (json.success && Array.isArray(json.data)) {
           setNews(json.data);
+          setNewsError(false);
+        } else {
+          setNewsError(true);
         }
+      } else {
+        setNewsError(true);
       }
     } catch (e) {
       console.error('Error fetching news:', e);
+      setNewsError(true);
     } finally {
       setLoadingNews(false);
     }
@@ -77,16 +88,23 @@ export const AppDashboard: React.FC = () => {
   // Fetch Sources from GET /api/sources
   const fetchSources = async () => {
     setLoadingSources(true);
+    setSourcesError(false);
     try {
       const res = await fetch('/api/sources');
       if (res.ok) {
         const json = await res.json();
-        if (json.success && json.data) {
+        if (json.success && Array.isArray(json.data)) {
           setSources(json.data);
+          setSourcesError(false);
+        } else {
+          setSourcesError(true);
         }
+      } else {
+        setSourcesError(true);
       }
     } catch (e) {
       console.error('Error fetching sources:', e);
+      setSourcesError(true);
     } finally {
       setLoadingSources(false);
     }
@@ -101,10 +119,16 @@ export const AppDashboard: React.FC = () => {
         const json = await res.json();
         if (json.success && json.data) {
           setStats(json.data);
+          setStatsError(false);
+        } else {
+          if (!isPoll) setStatsError(true);
         }
+      } else {
+        if (!isPoll) setStatsError(true);
       }
     } catch (e) {
       console.error('Error fetching stats:', e);
+      if (!isPoll) setStatsError(true);
     } finally {
       if (!isPoll) setLoadingStats(false);
     }
@@ -372,6 +396,8 @@ export const AppDashboard: React.FC = () => {
           <DashboardTab
             stats={stats}
             loadingStats={loadingStats}
+            statsError={statsError}
+            onRetryStats={() => fetchStats(false)}
             news={news}
             sources={sources}
             onTriggerScraper={handleTriggerScraper}
@@ -388,6 +414,7 @@ export const AppDashboard: React.FC = () => {
           <InputSourcesTab
             sources={sources}
             loading={loadingSources}
+            error={sourcesError}
             onAddSource={handleAddSource}
             onDeleteSource={handleDeleteSource}
             onUpdateSource={handleUpdateSource}
@@ -405,6 +432,7 @@ export const AppDashboard: React.FC = () => {
           <ContentDeskTab
             news={news}
             loading={loadingNews}
+            error={newsError}
             onRefresh={fetchNews}
             onTriggerScraper={handleTriggerScraper}
             onTriggerTranslator={handleTriggerTranslator}
@@ -413,6 +441,7 @@ export const AppDashboard: React.FC = () => {
             onCreateCustomArticle={handleCreateCustomArticle}
             isTriggeringScraper={isTriggeringScraper}
             isTriggeringTranslator={isTriggeringTranslator}
+            onNavigateTab={handleNavigateTab}
             initialSubTab={(activeSubTab as any) || 'queue'}
           />
         )}

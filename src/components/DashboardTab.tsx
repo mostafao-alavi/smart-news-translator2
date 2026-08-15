@@ -20,10 +20,13 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { StatsOverview } from './StatsOverview';
+import { DatabaseErrorFallback } from './DatabaseErrorFallback';
 
 interface DashboardTabProps {
   stats: StatsData | null;
   loadingStats: boolean;
+  statsError?: boolean;
+  onRetryStats?: () => void;
   news: JoinedArticleNews[];
   sources: SourceItem[];
   onTriggerScraper: () => void;
@@ -37,6 +40,8 @@ interface DashboardTabProps {
 export const DashboardTab: React.FC<DashboardTabProps> = ({
   stats,
   loadingStats,
+  statsError = false,
+  onRetryStats,
   news,
   sources,
   onTriggerScraper,
@@ -51,8 +56,17 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Live Statistics Summary */}
-      <StatsOverview stats={stats} loading={loadingStats} />
+      {/* Database Error Fallback if stats fail to load */}
+      {statsError ? (
+        <DatabaseErrorFallback
+          message="دیتابیس در حال بازسازی است. لطفاً چند دقیقه دیگر تلاش کنید."
+          onRetry={onRetryStats}
+          isRetrying={loadingStats}
+        />
+      ) : (
+        /* Top Live Statistics Summary */
+        <StatsOverview stats={stats} loading={loadingStats} />
+      )}
 
       {/* Quick Action Shortcuts Banner */}
       <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">

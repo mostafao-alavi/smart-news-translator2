@@ -6,7 +6,12 @@ CREATE TABLE IF NOT EXISTS sources (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   url TEXT NOT NULL UNIQUE,
-  language TEXT DEFAULT 'en'
+  language TEXT DEFAULT 'en',
+  category TEXT DEFAULT 'general',
+  selector TEXT DEFAULT NULL,
+  scrape_limit INTEGER DEFAULT 10,
+  is_active INTEGER DEFAULT 1,
+  created_at TEXT DEFAULT (datetime('now'))
 );
 
 -- 2. Scraped News Articles Table
@@ -34,9 +39,13 @@ CREATE TABLE IF NOT EXISTS translations (
   target_language TEXT DEFAULT 'persian',
   translated_title TEXT NOT NULL,
   translated_content TEXT NOT NULL,
+  suggested_titles TEXT,
+  tags TEXT,
+  meta_description TEXT,
   translated_at TEXT DEFAULT (datetime('now')),
   model_used TEXT,
   ai_model TEXT,
+  approval_status TEXT DEFAULT 'approved',
   FOREIGN KEY (article_id) REFERENCES articles(id)
 );
 
@@ -47,6 +56,9 @@ CREATE TABLE IF NOT EXISTS translation_history (
   target_language TEXT DEFAULT 'persian',
   translated_title TEXT NOT NULL,
   translated_content TEXT NOT NULL,
+  suggested_titles TEXT,
+  tags TEXT,
+  meta_description TEXT,
   translated_at TEXT DEFAULT (datetime('now')),
   model_used TEXT NOT NULL,
   FOREIGN KEY (article_id) REFERENCES articles(id)

@@ -24,10 +24,13 @@ import {
   Layers,
   Sparkle,
 } from 'lucide-react';
+import { DatabaseErrorFallback } from './DatabaseErrorFallback';
+import { EmptyState } from './EmptyState';
 
 interface SourcesTabProps {
   sources: SourceItem[];
   loading: boolean;
+  error?: boolean;
   onAddSource: (
     name: string,
     url: string,
@@ -49,6 +52,7 @@ interface SourcesTabProps {
 export const SourcesTab: React.FC<SourcesTabProps> = ({
   sources,
   loading,
+  error = false,
   onAddSource,
   onDeleteSource,
   onUpdateSource,
@@ -902,10 +906,22 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
           )}
 
           {/* Sources Card List */}
-          {loading ? (
+          {error ? (
+            <DatabaseErrorFallback
+              message="دیتابیس در حال بازسازی است. لطفاً چند دقیقه دیگر تلاش کنید."
+              onRetry={onRefresh}
+              isRetrying={loading}
+            />
+          ) : loading ? (
             <div className="bg-white border border-gray-200/90 rounded-2xl p-12 text-center text-gray-500 text-xs font-medium">
               در حال دریافت و ساختاربندی لیست منابع از دیتابیس D1...
             </div>
+          ) : sources.length === 0 ? (
+            <EmptyState
+              icon={Rss}
+              title="هنوز منبع خبری ثبت نشده است"
+              description="می‌توانید از فیدهای پیشنهادی آماده زیر استفاده کنید یا با استفاده از فرم ثبت منبع، آدرس RSS جدیدی اضافه نمایید."
+            />
           ) : filteredSources.length === 0 ? (
             <div className="bg-white border border-gray-200/90 rounded-2xl p-12 text-center text-gray-500 text-xs space-y-2">
               <Rss className="w-8 h-8 text-gray-300 mx-auto" />
