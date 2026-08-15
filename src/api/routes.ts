@@ -328,7 +328,7 @@ api.get('/health', (c) => {
       status: 'ok',
       service: '1000-dastan-api',
       timestamp: new Date().toISOString(),
-      version: '1.0.0'
+      version: '1.0.1'
     }
   });
 });
