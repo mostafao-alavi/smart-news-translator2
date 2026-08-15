@@ -15,7 +15,7 @@ binding = "DB"
 database_name = "news_db"
 database_id = "2815bd80-f483-4f9b-872d-93047309ed13"
 
-[[ai]]
+[ai]
 binding = "AI"
 
 [[queues.producers]]
