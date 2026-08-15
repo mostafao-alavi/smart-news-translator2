@@ -25,7 +25,7 @@ database_id = "efe58467-d7ce-4f36-ad57-592b694f8a0e"
 # KV — کش RSS
 [[kv_namespaces]]
 binding = "CACHE"
-id = "news_cache"
+id = "ea0caaac56ea4a5095af78a3667ef32c"
 
 # Workers AI
 [ai]
