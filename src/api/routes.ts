@@ -1816,6 +1816,301 @@ api.post('/telegram/send-news', async (c) => {
   }
 });
 
+// POST /api/telegram/send/:articleId - Send specific article by ID from DB to Telegram
+api.post('/telegram/send/:articleId', async (c) => {
+  const articleId = c.req.param('articleId');
+  const env = c.env;
+
+  try {
+    // 1. خواندن مقاله از DB اولیه
+    const article = await env.DB.prepare(
+      'SELECT * FROM articles WHERE id = ?'
+    ).bind(articleId).first<any>();
+
+    if (!article) {
+      return c.json({ success: false, data: null, error: 'مقاله پیدا نشد' }, 404);
+    }
+
+    // 2. خواندن ترجمه از DB_ARCHIVE یا DB اصلی
+    const targetDb = env.DB_ARCHIVE || env.DB;
+    const translation = await targetDb.prepare(
+      'SELECT * FROM translations WHERE article_id = ? ORDER BY id DESC LIMIT 1'
+    ).bind(articleId).first<any>();
+
+    if (!translation) {
+      return c.json({ success: false, data: null, error: 'ترجمه برای این مقاله پیدا نشد' }, 404);
+    }
+
+    // Parse tags safely
+    let tagsList: string[] = [];
+    try {
+      if (typeof translation.tags === 'string') {
+        tagsList = JSON.parse(translation.tags);
+      } else if (Array.isArray(translation.tags)) {
+        tagsList = translation.tags;
+      }
+    } catch {
+      tagsList = [];
+    }
+
+    // 3. ارسال به Telegram
+    const { distributeToTelegram } = await import('../cron/telegramBot');
+    const result = await distributeToTelegram(env, {
+      article_id: Number(articleId),
+      translation_id: translation.id,
+      title: translation.translated_title || article.title,
+      content: translation.translated_content || translation.translated_summary || article.summary || '',
+      summary: translation.translated_summary,
+      tags: tagsList,
+      source_url: article.link || article.original_url,
+    });
+
+    if (!result.ok) {
+      return c.json({
+        success: false,
+        data: null,
+        error: result.description || 'خطا در ارسال پیام به تلگرام',
+      }, 500);
+    }
+
+    const messageId = result.result?.message_id || null;
+
+    return c.json({
+      success: true,
+      data: {
+        message_id: messageId,
+        sent: true,
+        channel: env.TELEGRAM_CHAT_ID || '@updaaate_crypto',
+      },
+      error: null,
+    }, 200);
+  } catch (err: any) {
+    return c.json({
+      success: false,
+      data: null,
+      error: `خطا در پایپ‌لاین تلگرام: ${err.message}`,
+    }, 500);
+  }
+});
+
+// POST /api/wp-sync - Sync & publish translated article to WordPress
+api.post('/wp-sync', async (c) => {
+  const env = c.env;
+  try {
+    let body: { article_id?: number; id?: number; limit?: number } = {};
+    try {
+      body = await c.req.json();
+    } catch {}
+
+    const articleId = body.article_id || body.id;
+
+    if (articleId) {
+      // 1. خواندن مقاله
+      const article = await env.DB.prepare(
+        'SELECT * FROM articles WHERE id = ?'
+      ).bind(articleId).first<any>();
+
+      if (!article) {
+        return c.json({ success: false, data: null, error: 'مقاله پیدا نشد' }, 404);
+      }
+
+      // 2. خواندن ترجمه
+      const targetDb = env.DB_ARCHIVE || env.DB;
+      const translation = await targetDb.prepare(
+        'SELECT * FROM translations WHERE article_id = ? ORDER BY id DESC LIMIT 1'
+      ).bind(articleId).first<any>();
+
+      if (!translation) {
+        return c.json({ success: false, data: null, error: 'ترجمه برای این مقاله پیدا نشد' }, 404);
+      }
+
+      // 3. انتشار در وردپرس
+      const { distributeToWordPress } = await import('../cron/wpSync');
+      const wpResult = await distributeToWordPress(env, {
+        article_id: Number(articleId),
+        translation_id: translation.id,
+        title: translation.translated_title,
+        content: translation.translated_content,
+        summary: translation.translated_summary,
+        source_url: article.link || article.original_url,
+        source_name: 'Cointelegraph',
+        featured_image: article.featured_image || null,
+      });
+
+      if (!wpResult.ok) {
+        return c.json({
+          success: false,
+          data: null,
+          error: wpResult.error || 'خطا در انتشار در وردپرس',
+        }, 500);
+      }
+
+      return c.json({
+        success: true,
+        data: {
+          post_id: Number(wpResult.postId) || wpResult.postId,
+          post_url: wpResult.postUrl,
+          published: true,
+        },
+        error: null,
+      }, 200);
+    }
+
+    // حالت کلی (Batch Sync)
+    const { wpSyncPublisher } = await import('../cron/wpSync');
+    const result = await wpSyncPublisher(env, { limit: body.limit || 5 });
+    return c.json({ success: true, data: result, error: null }, 200);
+  } catch (err: any) {
+    return c.json({
+      success: false,
+      data: null,
+      error: `خطا در همگام‌سازی وردپرس: ${err.message}`,
+    }, 500);
+  }
+});
+
+// POST /api/news/:id/distribute - Universal Distribution Hub (Telegram + WordPress)
+api.post('/news/:id/distribute', async (c) => {
+  const articleId = c.req.param('id');
+  const env = c.env;
+
+  try {
+    let body: { platforms?: string[] } = {};
+    try {
+      body = await c.req.json();
+    } catch {}
+
+    const platforms = (body.platforms && Array.isArray(body.platforms) && body.platforms.length > 0)
+      ? body.platforms.map(p => p.toLowerCase().trim())
+      : ['telegram', 'wordpress'];
+
+    // 1. خواندن اطلاعات مقاله
+    const article = await env.DB.prepare(
+      'SELECT * FROM articles WHERE id = ?'
+    ).bind(articleId).first<any>();
+
+    if (!article) {
+      return c.json({ success: false, data: null, error: 'مقاله پیدا نشد' }, 404);
+    }
+
+    // 2. خواندن ترجمه تاییدشده/موجود
+    const targetDb = env.DB_ARCHIVE || env.DB;
+    const translation = await targetDb.prepare(
+      'SELECT * FROM translations WHERE article_id = ? ORDER BY id DESC LIMIT 1'
+    ).bind(articleId).first<any>();
+
+    if (!translation) {
+      return c.json({ success: false, data: null, error: 'ترجمه آماده‌ای برای این خبر ثبت نشده است. لطفاً ابتدا عملیات ترجمه را اجرا کنید.' }, 404);
+    }
+
+    const responseData: {
+      article_id: number;
+      telegram?: { sent: boolean; message_id?: any; error?: string };
+      wordpress?: { published: boolean; post_id?: any; post_url?: string; error?: string };
+    } = {
+      article_id: Number(articleId),
+    };
+
+    // 3. توزیع در تلگرام در صورت درخواست
+    if (platforms.includes('telegram')) {
+      try {
+        let tagsList: string[] = [];
+        try {
+          if (typeof translation.tags === 'string') {
+            tagsList = JSON.parse(translation.tags);
+          } else if (Array.isArray(translation.tags)) {
+            tagsList = translation.tags;
+          }
+        } catch {
+          tagsList = [];
+        }
+
+        const { distributeToTelegram } = await import('../cron/telegramBot');
+        const tgRes = await distributeToTelegram(env, {
+          article_id: Number(articleId),
+          translation_id: translation.id,
+          title: translation.translated_title || article.title,
+          content: translation.translated_content || translation.translated_summary || article.summary || '',
+          summary: translation.translated_summary,
+          tags: tagsList,
+          source_url: article.link || article.original_url,
+        });
+
+        if (tgRes.ok) {
+          responseData.telegram = {
+            sent: true,
+            message_id: tgRes.result?.message_id || 1,
+          };
+        } else {
+          responseData.telegram = {
+            sent: false,
+            error: tgRes.description || 'عدم موفقیت در ارسال تلگرام',
+          };
+        }
+      } catch (tgErr: any) {
+        responseData.telegram = {
+          sent: false,
+          error: tgErr.message,
+        };
+      }
+    }
+
+    // 4. توزیع در وردپرس در صورت درخواست
+    if (platforms.includes('wordpress')) {
+      try {
+        const { distributeToWordPress } = await import('../cron/wpSync');
+        const wpRes = await distributeToWordPress(env, {
+          article_id: Number(articleId),
+          translation_id: translation.id,
+          title: translation.translated_title,
+          content: translation.translated_content,
+          summary: translation.translated_summary,
+          source_url: article.link || article.original_url,
+          source_name: 'Cointelegraph',
+          featured_image: article.featured_image || null,
+        });
+
+        if (wpRes.ok) {
+          responseData.wordpress = {
+            published: true,
+            post_id: Number(wpRes.postId) || wpRes.postId,
+            post_url: wpRes.postUrl,
+          };
+        } else {
+          responseData.wordpress = {
+            published: false,
+            error: wpRes.error || 'عدم موفقیت در ارسال به وردپرس',
+          };
+        }
+      } catch (wpErr: any) {
+        responseData.wordpress = {
+          published: false,
+          error: wpErr.message,
+        };
+      }
+    }
+
+    // لاگ سیستم
+    await recordSystemEvent(
+      env.DB,
+      'DISTRIBUTE_HUB_TRIGGERED',
+      `توزیع خبر #${articleId} در پلتفرم‌های (${platforms.join(', ')})`
+    );
+
+    return c.json({
+      success: true,
+      data: responseData,
+      error: null,
+    }, 200);
+  } catch (err: any) {
+    return c.json({
+      success: false,
+      data: null,
+      error: `خطا در مرکز توزیع محتوا: ${err.message}`,
+    }, 500);
+  }
+});
+
 // POST & GET /api/clear-cache - Clear cache headers and instruct client to reset cache
 api.all('/clear-cache', async (c) => {
   c.header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');

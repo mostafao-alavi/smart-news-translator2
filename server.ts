@@ -1,12 +1,9 @@
 import express from 'express';
 import path from 'path';
-
 import { createServer as createViteServer } from 'vite';
 import { getRequestListener } from '@hono/node-server';
 import apiRoutes from './src/api/routes.ts';
-import { mockD1 } from './src/db/local_d1.ts';
-
-
+import { mockD1, mockKV } from './src/db/local_d1.ts';
 
 const PORT = 3000;
 
@@ -26,15 +23,19 @@ async function startServer() {
 
   // Adapter to route Express requests to Hono
   const fetchHandler = (req: any, env: any, ctx: any) => {
-      return apiRoutes.fetch(req, { DB: mockD1, ...process.env, ...env }, ctx);
+    return apiRoutes.fetch(req, {
+      DB: mockD1,
+      DB_ARCHIVE: mockD1,
+      CACHE: mockKV,
+      ...process.env,
+      ...env
+    }, ctx);
   };
   const honoListener = getRequestListener(fetchHandler as any);
 
   // Mount API
   app.use('/api', (req, res, next) => {
-      // Hono uses getRequestListener which looks at req.url
-      // We pass the request to honoListener
-      honoListener(req, res);
+    honoListener(req, res);
   });
 
   // Vite middleware for development
