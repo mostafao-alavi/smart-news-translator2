@@ -70,6 +70,94 @@ export async function uploadWordPressMedia(
 }
 
 /**
+ * Resolves or creates tags in WordPress and returns array of tag IDs
+ */
+export async function ensureWordPressTags(
+  apiUrl: string,
+  authHeader: string,
+  rawTags?: string[] | string | null
+): Promise<number[]> {
+  if (!rawTags) return [];
+
+  let tagNames: string[] = [];
+  if (Array.isArray(rawTags)) {
+    tagNames = rawTags.map(t => String(t).trim()).filter(Boolean);
+  } else if (typeof rawTags === 'string') {
+    try {
+      const parsed = JSON.parse(rawTags);
+      if (Array.isArray(parsed)) {
+        tagNames = parsed.map(t => String(t).trim()).filter(Boolean);
+      } else {
+        tagNames = rawTags.split(/[,،]/).map(t => t.trim()).filter(Boolean);
+      }
+    } catch {
+      tagNames = rawTags.split(/[,،]/).map(t => t.trim()).filter(Boolean);
+    }
+  }
+
+  if (tagNames.length === 0) return [];
+
+  const cleanUrl = apiUrl.trim().replace(/\/+$/, '');
+  const tagsEndpoint = cleanUrl.endsWith('/posts')
+    ? cleanUrl.replace(/\/posts$/, '/tags')
+    : (cleanUrl.endsWith('/wp/v2') ? `${cleanUrl}/tags` : `${cleanUrl}/wp/v2/tags`);
+
+  const tagIds: number[] = [];
+
+  for (const name of tagNames.slice(0, 10)) {
+    try {
+      // 1. Try to create the tag
+      const createRes = await fetch(tagsEndpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json',
+          'User-Agent': 'HazardastanWorker/2.0',
+        },
+        body: JSON.stringify({ name }),
+      });
+
+      if (createRes.ok) {
+        const created: any = await createRes.json();
+        if (created.id) {
+          tagIds.push(created.id);
+          continue;
+        }
+      }
+
+      // 2. If tag exists, grab the existing term_id or search for it
+      const errJson: any = await createRes.json().catch(() => null);
+      if (errJson && errJson.data && errJson.data.term_id) {
+        tagIds.push(errJson.data.term_id);
+        continue;
+      }
+
+      // Search for existing tag
+      const searchRes = await fetch(`${tagsEndpoint}?search=${encodeURIComponent(name)}`, {
+        headers: {
+          'Authorization': authHeader,
+          'User-Agent': 'HazardastanWorker/2.0',
+        },
+      });
+
+      if (searchRes.ok) {
+        const foundList: any = await searchRes.json();
+        if (Array.isArray(foundList) && foundList.length > 0) {
+          const match = foundList.find((t: any) => t.name?.toLowerCase() === name.toLowerCase()) || foundList[0];
+          if (match && match.id) {
+            tagIds.push(match.id);
+          }
+        }
+      }
+    } catch (tagErr: any) {
+      console.warn(`[WordPress] Tag resolution failed for "${name}":`, tagErr.message);
+    }
+  }
+
+  return tagIds;
+}
+
+/**
  * Publishes a single translated article to WordPress
  */
 export async function distributeToWordPress(
@@ -80,6 +168,7 @@ export async function distributeToWordPress(
     title: string;
     content: string;
     summary?: string;
+    tags?: string[] | string | null;
     source_url?: string;
     source_name?: string;
     featured_image?: string | null;
@@ -101,13 +190,21 @@ export async function distributeToWordPress(
     : `${apiUrl.replace(/\/+$/, '')}/posts`;
 
   try {
+    const authHeader = `Basic ${btoa(`${username}:${password}`)}`;
+
     // 1. Upload featured image if available
     let featuredMediaId: number | null = null;
     if (translated.featured_image) {
       featuredMediaId = await uploadWordPressMedia(apiUrl, username, password, translated.featured_image, translated.title);
     }
 
-    // 2. Format HTML content
+    // 2. Resolve WordPress Tags
+    let tagIds: number[] = [];
+    if (translated.tags) {
+      tagIds = await ensureWordPressTags(apiUrl, authHeader, translated.tags);
+    }
+
+    // 3. Format HTML content
     const authorAttribution = translated.source_name || 'Cointelegraph';
     const paragraphs = translated.content
       .split('\n\n')
@@ -126,8 +223,7 @@ export async function distributeToWordPress(
   </p>
 </div>`.trim();
 
-    // 3. Post to WordPress
-    const authHeader = `Basic ${btoa(`${username}:${password}`)}`;
+    // 4. Post to WordPress
     const payload: any = {
       title: translated.title,
       content: formattedHtml,
@@ -135,6 +231,10 @@ export async function distributeToWordPress(
       status: status,
       categories: [categoryId],
     };
+
+    if (tagIds.length > 0) {
+      payload.tags = tagIds;
+    }
 
     if (featuredMediaId) {
       payload.featured_media = featuredMediaId;

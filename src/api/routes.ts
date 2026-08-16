@@ -877,51 +877,62 @@ api.get('/news/:id/history', async (c) => {
   }
 });
 
-// GET /api/stats - Aggregated metrics for Dashboard (Using cached system_metrics)
+// GET /api/stats - Aggregated metrics for Dashboard (Reading directly from DB & DB_ARCHIVE)
 api.get('/stats', async (c) => {
   try {
-    await ensureTablesAndLogs(c.env.DB);
-    const metrics = await c.env.DB.prepare('SELECT key, value FROM system_metrics').all<{key: string, value: number}>();
-    
-    // Fallback if triggers haven't populated yet
-    if (!metrics || !metrics.results || metrics.results.length === 0) {
-      const batchRes = await c.env.DB.batch<{ count: number }>([
-        c.env.DB.prepare('SELECT COUNT(*) as count FROM sources'),
-        c.env.DB.prepare('SELECT COUNT(*) as count FROM articles'),
-        c.env.DB.prepare('SELECT COUNT(*) as count FROM translations'),
-        c.env.DB.prepare("SELECT COUNT(*) as count FROM articles WHERE translation_status = 'pending'"),
-        c.env.DB.prepare("SELECT COUNT(*) as count FROM distributions"),
-        c.env.DB.prepare("SELECT COUNT(*) as count FROM platforms"),
-        c.env.DB.prepare("SELECT COUNT(*) as count FROM translations WHERE approval_status = 'approved' OR approval_status IS NULL"),
-        c.env.DB.prepare("SELECT COUNT(*) as count FROM articles WHERE wp_sync_status = 'published'")
-      ]);
-      const stats: StatsData = {
-        sources_count: batchRes[0]?.results?.[0]?.count || 0,
-        articles_count: batchRes[1]?.results?.[0]?.count || 0,
-        translations_count: batchRes[2]?.results?.[0]?.count || 0,
-        pending_translations_count: batchRes[3]?.results?.[0]?.count || 0,
-        distributions_count: batchRes[4]?.results?.[0]?.count || 0,
-        platforms_count: batchRes[5]?.results?.[0]?.count || 0,
-        approved_translations_count: batchRes[6]?.results?.[0]?.count || 0,
-        wp_published_count: batchRes[7]?.results?.[0]?.count || 0,
-      };
-      return c.json({ success: true, data: stats, error: null }, 200);
+    const archiveDb = c.env.DB_ARCHIVE || c.env.DB;
+    const primaryDb = c.env.DB;
+
+    // Run parallel queries across Primary DB and Archive DB
+    const [
+      sourcesCountRes,
+      articlesCountRes,
+      pendingCountRes,
+      platformsCountRes,
+      translationsCountRes,
+      wpDistCountRes,
+      allDistCountRes,
+      approvedCountRes,
+    ] = await Promise.all([
+      // Primary DB queries
+      primaryDb.prepare('SELECT COUNT(*) as count FROM sources').first<{ count: number }>().catch(() => ({ count: 0 })),
+      primaryDb.prepare('SELECT COUNT(*) as count FROM articles').first<{ count: number }>().catch(() => ({ count: 0 })),
+      primaryDb.prepare("SELECT COUNT(*) as count FROM articles WHERE translation_status = 'pending' OR status = 'pending'").first<{ count: number }>().catch(() => ({ count: 0 })),
+      primaryDb.prepare('SELECT COUNT(*) as count FROM platforms').first<{ count: number }>().catch(() => ({ count: 0 })),
+
+      // Archive DB queries (with fallback if tables don't exist yet)
+      archiveDb.prepare('SELECT COUNT(*) as count FROM translations').first<{ count: number }>().catch(async () => {
+        return (await primaryDb.prepare('SELECT COUNT(*) as count FROM translations').first<{ count: number }>().catch(() => ({ count: 0 }))) || { count: 0 };
+      }),
+      archiveDb.prepare("SELECT COUNT(*) as count FROM distributions WHERE platform = 'wordpress' AND (status = 'sent' OR status = 'published')").first<{ count: number }>().catch(async () => {
+        return (await primaryDb.prepare("SELECT COUNT(*) as count FROM articles WHERE wp_sync_status = 'published'").first<{ count: number }>().catch(() => ({ count: 0 }))) || { count: 0 };
+      }),
+      archiveDb.prepare('SELECT COUNT(*) as count FROM distributions').first<{ count: number }>().catch(async () => {
+        return (await primaryDb.prepare('SELECT COUNT(*) as count FROM distributions').first<{ count: number }>().catch(() => ({ count: 0 }))) || { count: 0 };
+      }),
+      archiveDb.prepare("SELECT COUNT(*) as count FROM translations WHERE approval_status = 'approved' OR approval_status IS NULL").first<{ count: number }>().catch(async () => {
+        return (await primaryDb.prepare("SELECT COUNT(*) as count FROM translations WHERE approval_status = 'approved' OR approval_status IS NULL").first<{ count: number }>().catch(() => ({ count: 0 }))) || { count: 0 };
+      }),
+    ]);
+
+    // Fallback if wpDistCount is 0, check primary db articles published
+    let wpPublished = wpDistCountRes?.count || 0;
+    if (wpPublished === 0) {
+      const primaryWp = await primaryDb.prepare("SELECT COUNT(*) as count FROM articles WHERE wp_sync_status = 'published'").first<{ count: number }>().catch(() => ({ count: 0 }));
+      if (primaryWp && primaryWp.count > 0) {
+        wpPublished = primaryWp.count;
+      }
     }
 
-    const statsMap: Record<string, number> = {};
-    metrics.results.forEach(m => {
-      statsMap[m.key] = m.value;
-    });
-
     const stats: StatsData = {
-      sources_count: statsMap['sources_count'] || 0,
-      articles_count: statsMap['articles_count'] || 0,
-      translations_count: statsMap['translations_count'] || 0,
-      pending_translations_count: statsMap['pending_translations_count'] || 0,
-      distributions_count: statsMap['distributions_count'] || 0,
-      platforms_count: statsMap['platforms_count'] || 0,
-      approved_translations_count: statsMap['approved_translations_count'] || 0,
-      wp_published_count: statsMap['wp_published_count'] || 0,
+      sources_count: sourcesCountRes?.count || 0,
+      articles_count: articlesCountRes?.count || 0,
+      translations_count: translationsCountRes?.count || 0,
+      pending_translations_count: pendingCountRes?.count || 0,
+      distributions_count: allDistCountRes?.count || 0,
+      platforms_count: platformsCountRes?.count || 0,
+      approved_translations_count: approvedCountRes?.count || 0,
+      wp_published_count: wpPublished,
     };
 
     return c.json({ success: true, data: stats, error: null }, 200);
@@ -1932,6 +1943,7 @@ api.post('/wp-sync', async (c) => {
         title: translation.translated_title,
         content: translation.translated_content,
         summary: translation.translated_summary,
+        tags: translation.tags || null,
         source_url: article.link || article.original_url,
         source_name: 'Cointelegraph',
         featured_image: article.featured_image || null,
@@ -2065,6 +2077,7 @@ api.post('/news/:id/distribute', async (c) => {
           title: translation.translated_title,
           content: translation.translated_content,
           summary: translation.translated_summary,
+          tags: translation.tags || null,
           source_url: article.link || article.original_url,
           source_name: 'Cointelegraph',
           featured_image: article.featured_image || null,

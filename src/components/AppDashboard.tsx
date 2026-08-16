@@ -398,6 +398,7 @@ export const AppDashboard: React.FC = () => {
             loadingStats={loadingStats}
             statsError={statsError}
             onRetryStats={() => fetchStats(false)}
+            onRefreshAll={refreshAllData}
             news={news}
             sources={sources}
             onTriggerScraper={handleTriggerScraper}

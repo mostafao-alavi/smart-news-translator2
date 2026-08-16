@@ -27,6 +27,7 @@ interface DashboardTabProps {
   loadingStats: boolean;
   statsError?: boolean;
   onRetryStats?: () => void;
+  onRefreshAll?: () => void;
   news: JoinedArticleNews[];
   sources: SourceItem[];
   onTriggerScraper: () => void;
@@ -42,6 +43,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   loadingStats,
   statsError = false,
   onRetryStats,
+  onRefreshAll,
   news,
   sources,
   onTriggerScraper,
@@ -51,6 +53,33 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   isTriggeringTranslator,
   onTranslateArticle,
 }) => {
+  const [distributingId, setDistributingId] = React.useState<number | null>(null);
+  const [distributedIds, setDistributedIds] = React.useState<number[]>([]);
+
+  const handleInstantDistribute = async (articleId: number) => {
+    setDistributingId(articleId);
+    try {
+      const res = await fetch(`/api/news/${articleId}/distribute`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platforms: ['telegram', 'wordpress'] }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setDistributedIds((prev) => [...prev, articleId]);
+        if (onRefreshAll) {
+          onRefreshAll();
+        } else if (onRetryStats) {
+          onRetryStats();
+        }
+      }
+    } catch (err) {
+      console.error('Instant distribute failed:', err);
+    } finally {
+      setDistributingId(null);
+    }
+  };
+
   const pendingNews = news.filter((n) => n.translation_status === 'pending' || !n.translated_title);
   const reviewNews = news.filter((n) => n.translation_status === 'completed' && n.translated_title);
 
@@ -238,20 +267,44 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
               </div>
             ) : (
               <div className="space-y-2.5">
-                {reviewNews.slice(0, 4).map((item) => (
-                  <div
-                    key={item.id}
-                    className="p-3 bg-emerald-50/40 hover:bg-emerald-50/80 rounded-xl border border-emerald-100 flex items-center justify-between gap-3 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <h4 className="text-xs font-bold text-gray-900 truncate">{item.translated_title}</h4>
-                      <p className="text-[10px] text-gray-500 truncate mt-0.5 font-mono dir-ltr text-right">{item.title}</p>
+                {reviewNews.slice(0, 4).map((item) => {
+                  const isDistributing = distributingId === item.id;
+                  const isDistributed = distributedIds.includes(item.id);
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="p-3 bg-emerald-50/40 hover:bg-emerald-50/80 rounded-xl border border-emerald-100 flex items-center justify-between gap-3 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-xs font-bold text-gray-900 truncate">{item.translated_title}</h4>
+                        <p className="text-[10px] text-gray-500 truncate mt-0.5 font-mono dir-ltr text-right">{item.title}</p>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {isDistributed ? (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            <span>منتشر شد</span>
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => handleInstantDistribute(item.id)}
+                            disabled={isDistributing}
+                            className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[11px] px-3 py-1.5 rounded-lg font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                          >
+                            {isDistributing ? (
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Send className="w-3 h-3" />
+                            )}
+                            <span>{isDistributing ? 'در حال ارسال...' : '🚀 ارسال آنی'}</span>
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-1 rounded font-bold shrink-0">
-                      آماده انتشار
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
