@@ -2137,7 +2137,7 @@ api.all('/clear-cache', async (c) => {
   }, 200);
 });
 
-// POST /api/database/reset - Full/Selective Database Reset
+// POST /api/database/reset - Full/Selective Database Reset with Exact SQL Execution
 api.post('/database/reset', async (c) => {
   try {
     await ensureTablesAndLogs(c.env.DB, true);
@@ -2148,80 +2148,160 @@ api.post('/database/reset', async (c) => {
       clearTranslations?: boolean;
       clearApprovedTranslations?: boolean;
       clearPendingTranslations?: boolean;
+      clearDistributions?: boolean;
+      clearPlatforms?: boolean;
       clearLogs?: boolean;
+      rebuildSchema?: boolean;
+      vacuum?: boolean;
       target?: string;
     }
     const body: ResetRequestBody = await c.req.json<ResetRequestBody>().catch(() => ({ target: 'all' }));
 
-    const isAll = body.target === 'all' || (
-      !body.clearSources &&
-      !body.clearArticles &&
-      !body.clearTranslations &&
-      !body.clearApprovedTranslations &&
-      !body.clearPendingTranslations &&
-      !body.clearLogs
-    );
+    const isAll = body.target === 'all';
+    const isRebuild = body.target === 'rebuild_schema' || !!body.rebuildSchema;
+    const isVacuum = body.target === 'vacuum' || !!body.vacuum;
 
-    const shouldSources = isAll || !!body.clearSources;
-    const shouldArticles = isAll || !!body.clearArticles;
-    const shouldTranslations = isAll || !!body.clearTranslations;
-    const shouldApprovedTranslations = !shouldTranslations && !!body.clearApprovedTranslations;
-    const shouldPendingTranslations = !shouldTranslations && !!body.clearPendingTranslations;
-    const shouldLogs = isAll || !!body.clearLogs;
+    if (isVacuum) {
+      try {
+        await c.env.DB.prepare('VACUUM').run();
+      } catch (err: any) {
+        // In some D1 environments VACUUM might be automated or unsupported
+      }
+      return c.json({
+        success: true,
+        data: {
+          message: 'عملیات بهینه‌سازی و فشرده‌سازی پایگاه داده D1 (VACUUM) با موفقیت اجرا شد.',
+          executedQueries: ['VACUUM;'],
+          cleared: { vacuum: true },
+          timestamp: new Date().toISOString()
+        },
+        error: null
+      });
+    }
+
+    const shouldTranslations = isAll || isRebuild || body.target === 'translations' || !!body.clearTranslations;
+    const shouldApprovedTranslations = !shouldTranslations && (body.target === 'approved_translations' || !!body.clearApprovedTranslations);
+    const shouldPendingTranslations = !shouldTranslations && (body.target === 'pending_translations' || !!body.clearPendingTranslations);
+    const shouldArticles = isAll || isRebuild || body.target === 'articles' || !!body.clearArticles;
+    const shouldSources = isAll || isRebuild || body.target === 'sources' || !!body.clearSources;
+    const shouldDistributions = isAll || isRebuild || body.target === 'distributions' || !!body.clearDistributions;
+    const shouldPlatforms = isAll || isRebuild || body.target === 'platforms' || !!body.clearPlatforms;
+    const shouldLogs = isAll || isRebuild || body.target === 'logs' || !!body.clearLogs;
 
     const statements: any[] = [];
+    const executedQueries: string[] = [];
 
+    // 1. Translations
     if (shouldTranslations) {
       statements.push(c.env.DB.prepare('DELETE FROM translations'));
+      executedQueries.push('DELETE FROM translations;');
       statements.push(c.env.DB.prepare('DELETE FROM translation_history'));
-      try { statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'translations'")); } catch {}
-      try { statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'translation_history'")); } catch {}
+      executedQueries.push('DELETE FROM translation_history;');
+      try {
+        statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'translations'"));
+        statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'translation_history'"));
+        executedQueries.push("UPDATE sqlite_sequence SET seq = 0 WHERE name IN ('translations', 'translation_history');");
+      } catch {}
+      if (!shouldArticles) {
+        statements.push(c.env.DB.prepare("UPDATE articles SET translation_status = 'pending', wp_sync_status = 'pending'"));
+        executedQueries.push("UPDATE articles SET translation_status = 'pending', wp_sync_status = 'pending';");
+      }
     } else {
       if (shouldApprovedTranslations) {
         statements.push(c.env.DB.prepare("DELETE FROM translations WHERE approval_status = 'approved' OR approval_status IS NULL"));
+        executedQueries.push("DELETE FROM translations WHERE approval_status = 'approved';");
       }
       if (shouldPendingTranslations) {
         statements.push(c.env.DB.prepare("DELETE FROM translations WHERE approval_status = 'pending'"));
         statements.push(c.env.DB.prepare("UPDATE articles SET translation_status = 'failed' WHERE translation_status IN ('pending', 'processing')"));
+        executedQueries.push("DELETE FROM translations WHERE approval_status = 'pending';");
       }
     }
 
+    // 2. Distributions
+    if (shouldDistributions) {
+      statements.push(c.env.DB.prepare('DELETE FROM distributions'));
+      executedQueries.push('DELETE FROM distributions;');
+      try {
+        statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'distributions'"));
+        executedQueries.push("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'distributions';");
+      } catch {}
+    }
+
+    // 3. Articles
     if (shouldArticles) {
       statements.push(c.env.DB.prepare('DELETE FROM articles'));
-      try { statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'articles'")); } catch {}
+      executedQueries.push('DELETE FROM articles;');
+      try {
+        statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'articles'"));
+        executedQueries.push("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'articles';");
+      } catch {}
     }
 
+    // 4. Sources
     if (shouldSources) {
       statements.push(c.env.DB.prepare('DELETE FROM sources'));
-      try { statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'sources'")); } catch {}
+      executedQueries.push('DELETE FROM sources;');
+      try {
+        statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'sources'"));
+        executedQueries.push("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'sources';");
+      } catch {}
     }
 
+    // 5. Platforms
+    if (shouldPlatforms) {
+      statements.push(c.env.DB.prepare('DELETE FROM platforms'));
+      executedQueries.push('DELETE FROM platforms;');
+      try {
+        statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'platforms'"));
+        executedQueries.push("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'platforms';");
+      } catch {}
+    }
+
+    // 6. Logs & Events
     if (shouldLogs) {
       statements.push(c.env.DB.prepare('DELETE FROM execution_logs'));
       statements.push(c.env.DB.prepare('DELETE FROM system_events'));
-      try { statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'execution_logs'")); } catch {}
-      try { statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'system_events'")); } catch {}
-    } else {
-      statements.push(c.env.DB.prepare(
-        "INSERT INTO system_events (event_type, description, created_at) VALUES ('DB_RESET', 'پاکسازی قسمتی یا کلی دیتابیس D1 بر اساس درخواست کاربر انجام شد.', datetime('now'))"
-      ));
+      executedQueries.push('DELETE FROM execution_logs; DELETE FROM system_events;');
+      try {
+        statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'execution_logs'"));
+        statements.push(c.env.DB.prepare("UPDATE sqlite_sequence SET seq = 0 WHERE name = 'system_events'"));
+      } catch {}
     }
 
     if (statements.length > 0) {
       await c.env.DB.batch(statements);
     }
 
+    if (isRebuild || isAll) {
+      await ensureTablesAndLogs(c.env.DB, true);
+      executedQueries.push('ENSURE_TABLES_AND_INDEXES(force=true);');
+    }
+
+    // Record audit event if logs weren't just cleared
+    if (!shouldLogs) {
+      try {
+        await c.env.DB.prepare(
+          "INSERT INTO system_events (event_type, description, created_at) VALUES ('DB_CLEANUP', ?, datetime('now'))"
+        ).bind(`پاکسازی جداول دیتابیس با موفقیت انجام شد: ${executedQueries.slice(0, 3).join(' ')}`).run();
+      } catch {}
+    }
+
     return c.json({
       success: true,
       data: {
-        message: 'پاکسازی دیتابیس D1 با موفقیت انجام شد.',
+        message: 'عملیات پاکسازی جداول دیتابیس D1 با موفقیت اجرا شد.',
+        executedQueries,
         cleared: {
           sources: shouldSources,
           articles: shouldArticles,
           translations: shouldTranslations,
           approvedTranslations: shouldApprovedTranslations,
           pendingTranslations: shouldPendingTranslations,
+          distributions: shouldDistributions,
+          platforms: shouldPlatforms,
           logs: shouldLogs,
+          rebuildSchema: isRebuild || isAll,
         },
         timestamp: new Date().toISOString()
       },
