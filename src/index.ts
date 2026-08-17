@@ -48,20 +48,14 @@ app.get('/health', (c) => {
   });
 });
 
-// Serve static assets from ./dist
-app.use('/assets/*', serveStatic({ root: './' }));
-app.use('/*.js', serveStatic({ root: './' }));
-app.use('/*.css', serveStatic({ root: './' }));
-app.use('/*.svg', serveStatic({ root: './' }));
-app.use('/*.png', serveStatic({ root: './' }));
-app.use('/*.ico', serveStatic({ root: './' }));
-app.use('/*.json', serveStatic({ root: './' }));
-
-// SPA Fallback
-app.get('*', serveStatic({
-  path: './index.html',
-  rewriteRequestPath: () => './index.html',
-}));
+// Serve static assets and SPA pages
+// In Cloudflare Workers Assets ([assets] in wrangler.toml), env.ASSETS handles all assets & SPA routing automatically
+app.get('*', async (c) => {
+  if (c.env && (c.env as any).ASSETS) {
+    return (c.env as any).ASSETS.fetch(c.req.raw);
+  }
+  return c.text('Not Found', 404);
+});
 
 // Cloudflare Worker export with fetch, scheduled, and queue handlers
 export default {

@@ -243,6 +243,7 @@ export interface ExecutionContext {
 
 // Cloudflare Workers Environment bindings
 export interface Env {
+  ASSETS?: { fetch: (request: Request | string, init?: RequestInit) => Promise<Response> };
   DB: D1Database;
   DB_ARCHIVE?: D1Database;
   CACHE?: KVNamespace;
