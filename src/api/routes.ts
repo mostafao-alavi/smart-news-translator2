@@ -490,12 +490,39 @@ api.post('/sources', async (c) => {
     const existing = results.find((s: any) => normalizeUrl(s.url) === cleanInputUrl);
 
     if (existing) {
-      const response: ApiResponse<null> = {
-        success: false,
-        data: null,
-        error: `آدرس منبع "${trimmedUrl}" قبلاً با نام "${(existing as any).name}" در سیستم ثبت شده است.`,
-      };
-      return c.json(response, 409);
+      // If already exists, update and activate it gracefully instead of erroring
+      try {
+        await c.env.DB.prepare(`
+          UPDATE sources 
+          SET name = ?, language = ?, category = ?, selector = ?, scrape_limit = ?, is_active = ?
+          WHERE id = ?
+        `).bind(trimmedName, lang, cat, sel, limit, active, existing.id).run();
+
+        const updatedSource: Source = {
+          id: existing.id,
+          name: trimmedName,
+          url: existing.url,
+          language: lang,
+          category: cat,
+          selector: sel || undefined,
+          scrape_limit: limit,
+          is_active: active,
+        };
+
+        return c.json({
+          success: true,
+          data: updatedSource,
+          message: `منبع "${trimmedName}" در دیتابیس D1 موجود بود و با موفقیت فعال/بروزرسانی شد.`,
+          error: null,
+        }, 200);
+      } catch (updErr: any) {
+        return c.json({
+          success: true,
+          data: existing,
+          message: `منبع "${trimmedName}" از قبل در دیتابیس ثبت است.`,
+          error: null,
+        }, 200);
+      }
     }
 
     // Insert new source with schema repair fallback
@@ -543,6 +570,79 @@ api.post('/sources', async (c) => {
       error: err.message || 'خطا در ثبت منبع جدید',
     };
     return c.json(response, 500);
+  }
+});
+
+// POST /api/sources/restore-defaults - Restore standard default sources (Cointelegraph, Decrypt, CoinDesk)
+api.post('/sources/restore-defaults', async (c) => {
+  try {
+    await ensureTablesAndLogs(c.env.DB, true);
+
+    const defaultSources = [
+      {
+        name: 'Cointelegraph',
+        url: 'https://cointelegraph.com/rss',
+        language: 'en',
+        category: 'crypto',
+        scrape_limit: 10,
+        is_active: 1,
+      },
+      {
+        name: 'Decrypt',
+        url: 'https://decrypt.co/feed',
+        language: 'en',
+        category: 'crypto',
+        scrape_limit: 10,
+        is_active: 1,
+      },
+      {
+        name: 'CoinDesk',
+        url: 'https://www.coindesk.com/arc/outboundfeeds/rss/',
+        language: 'en',
+        category: 'crypto',
+        scrape_limit: 10,
+        is_active: 1,
+      },
+    ];
+
+    let insertedCount = 0;
+    let activatedCount = 0;
+
+    const existingRes = await c.env.DB.prepare('SELECT id, name, url, is_active FROM sources').all();
+    const existing = existingRes.results || [];
+    const normalizeUrl = (u: string) => u.trim().toLowerCase().replace(/\/+$/, '');
+
+    for (const src of defaultSources) {
+      const match: any = existing.find((e: any) => normalizeUrl(e.url) === normalizeUrl(src.url));
+      if (!match) {
+        try {
+          await c.env.DB.prepare(
+            'INSERT INTO sources (name, url, language, category, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?)'
+          ).bind(src.name, src.url, src.language, src.category, src.scrape_limit, src.is_active).run();
+          insertedCount++;
+        } catch (err) {
+          console.warn('Error inserting default source:', err);
+        }
+      } else if (match.is_active === 0 || match.is_active === false) {
+        await c.env.DB.prepare('UPDATE sources SET is_active = 1 WHERE id = ?').bind(match.id).run();
+        activatedCount++;
+      }
+    }
+
+    const allSources = await c.env.DB.prepare('SELECT * FROM sources ORDER BY id ASC').all();
+
+    return c.json({
+      success: true,
+      data: {
+        message: `بازیابی انجام شد: ${insertedCount} منبع جدید ثبت شد، ${activatedCount} منبع فعال شد.`,
+        insertedCount,
+        activatedCount,
+        sources: allSources.results || [],
+      },
+      error: null,
+    });
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
   }
 });
 
