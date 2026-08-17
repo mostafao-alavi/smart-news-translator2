@@ -17,7 +17,7 @@ export default function App() {
         <Route path="/content-desk" element={<AppDashboard />} />
         <Route path="/sources" element={<AppDashboard />} />
         <Route path="/destinations" element={<AppDashboard />} />
-        <Route path="/reports" element={<AppDashboard />} />
+        <Route path="/reports" element={<Navigate to="/app/dashboard" replace />} />
         <Route path="/d1" element={<AppDashboard />} />
         <Route path="/database" element={<AppDashboard />} />
         <Route path="/distributions" element={<AppDashboard />} />

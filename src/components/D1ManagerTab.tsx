@@ -1338,7 +1338,7 @@ export const D1ManagerTab: React.FC<D1ManagerTabProps> = ({
                 <input
                   type="text"
                   required
-                  value={platformForm.name}
+                  value={platformForm.name || ''}
                   onChange={(e) => setPlatformForm({ ...platformForm, name: e.target.value })}
                   placeholder="مثلاً: وب‌سایت خبری B یا کانال تلگرام اصلی"
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500"
@@ -1349,7 +1349,7 @@ export const D1ManagerTab: React.FC<D1ManagerTabProps> = ({
                 <label className="block text-gray-700 font-bold mb-1">شناسه اختصاصی (slug)</label>
                 <input
                   type="text"
-                  value={platformForm.slug}
+                  value={platformForm.slug || ''}
                   onChange={(e) => setPlatformForm({ ...platformForm, slug: e.target.value })}
                   placeholder="مثلاً: site_b_tech"
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 font-mono"
@@ -1359,7 +1359,7 @@ export const D1ManagerTab: React.FC<D1ManagerTabProps> = ({
               <div>
                 <label className="block text-gray-700 font-bold mb-1">نوع پلتفرم (Platform Type) *</label>
                 <select
-                  value={platformForm.platform_type}
+                  value={platformForm.platform_type || 'wordpress'}
                   onChange={(e: any) => setPlatformForm({ ...platformForm, platform_type: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 font-bold"
                 >
@@ -1376,7 +1376,7 @@ export const D1ManagerTab: React.FC<D1ManagerTabProps> = ({
                 <input
                   type="url"
                   required
-                  value={platformForm.api_url}
+                  value={platformForm.api_url || ''}
                   onChange={(e) => setPlatformForm({ ...platformForm, api_url: e.target.value })}
                   placeholder="https://site-b.ir/wp-json/wp/v2"
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 font-mono dir-ltr text-left"
@@ -1387,7 +1387,7 @@ export const D1ManagerTab: React.FC<D1ManagerTabProps> = ({
                 <label className="block text-gray-700 font-bold mb-1">نام کاربری احراز هویت (در صورت وجود)</label>
                 <input
                   type="text"
-                  value={platformForm.auth_username}
+                  value={platformForm.auth_username || ''}
                   onChange={(e) => setPlatformForm({ ...platformForm, auth_username: e.target.value })}
                   placeholder="admin"
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 font-mono dir-ltr text-left"
@@ -1398,7 +1398,7 @@ export const D1ManagerTab: React.FC<D1ManagerTabProps> = ({
                 <label className="block text-gray-700 font-bold mb-1">رمز عبور برنامه / کلید API (Application Password)</label>
                 <input
                   type="password"
-                  value={platformForm.auth_password_secret}
+                  value={platformForm.auth_password_secret || ''}
                   onChange={(e) => setPlatformForm({ ...platformForm, auth_password_secret: e.target.value })}
                   placeholder="xxxx xxxx xxxx xxxx"
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 font-mono dir-ltr text-left"
@@ -1441,7 +1441,7 @@ export const D1ManagerTab: React.FC<D1ManagerTabProps> = ({
                 <input
                   type="number"
                   required
-                  value={distForm.translation_id}
+                  value={distForm.translation_id || ''}
                   onChange={(e) => setDistForm({ ...distForm, translation_id: e.target.value })}
                   placeholder="مثلاً: 1"
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500"
@@ -1451,7 +1451,7 @@ export const D1ManagerTab: React.FC<D1ManagerTabProps> = ({
               <div>
                 <label className="block text-gray-700 font-bold mb-1">پلتفرم مقصد (target_platform) *</label>
                 <select
-                  value={distForm.target_platform}
+                  value={distForm.target_platform || 'updaaate_ir'}
                   onChange={(e) => setDistForm({ ...distForm, target_platform: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 font-bold"
                 >
@@ -1468,7 +1468,7 @@ export const D1ManagerTab: React.FC<D1ManagerTabProps> = ({
                 <label className="block text-gray-700 font-bold mb-1">نام نویسنده / ناشر (author_name)</label>
                 <input
                   type="text"
-                  value={distForm.author_name}
+                  value={distForm.author_name || ''}
                   onChange={(e) => setDistForm({ ...distForm, author_name: e.target.value })}
                   placeholder="مثلاً: هزاردستان ورکر"
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500"
@@ -1479,7 +1479,7 @@ export const D1ManagerTab: React.FC<D1ManagerTabProps> = ({
                 <label className="block text-gray-700 font-bold mb-1">شناسه پست در مقصد (platform_post_id)</label>
                 <input
                   type="text"
-                  value={distForm.platform_post_id}
+                  value={distForm.platform_post_id || ''}
                   onChange={(e) => setDistForm({ ...distForm, platform_post_id: e.target.value })}
                   placeholder="آیدی پست وردپرس (مثلاً: 10452)"
                   className="w-full px-3 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-amber-500 font-mono"

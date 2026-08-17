@@ -424,7 +424,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
               <input
                 type="text"
                 placeholder="مثال: TechCrunch یا BBC News"
-                value={name}
+                value={name || ''}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full bg-gray-50/80 border border-gray-200 text-gray-900 placeholder-gray-400 rounded-xl px-3.5 py-2.5 text-xs min-h-[44px] sm:min-h-[40px] focus:bg-white focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all"
               />
@@ -447,7 +447,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                 <input
                   type="url"
                   placeholder="https://example.com/rss.xml"
-                  value={url}
+                  value={url || ''}
                   onChange={(e) => {
                     setUrl(e.target.value);
                     setTestResult(null);
@@ -592,7 +592,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
               <input
                 type="text"
                 placeholder="مثال: .article-content یا article p"
-                value={selector}
+                value={selector || ''}
                 onChange={(e) => setSelector(e.target.value)}
                 className="w-full bg-gray-50/80 border border-gray-200 text-gray-900 placeholder-gray-400 rounded-xl px-3.5 py-2.5 text-xs min-h-[44px] sm:min-h-[40px] focus:bg-white focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 font-mono ltr text-left transition-all"
               />
@@ -642,7 +642,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
               <input
                 type="text"
                 placeholder="جستجو در میان فیدهای پیشنهادی..."
-                value={presetSearch}
+                value={presetSearch || ''}
                 onChange={(e) => setPresetSearch(e.target.value)}
                 className="w-full bg-gray-50 border border-gray-200/80 text-gray-900 placeholder-gray-400 rounded-xl px-3 py-1.5 text-xs focus:bg-white focus:outline-none focus:border-orange-500"
               />
@@ -803,7 +803,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
               <input
                 type="text"
                 placeholder="جستجو در نام منبع یا آدرس URL..."
-                value={searchQuery}
+                value={searchQuery || ''}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="flex-1 bg-gray-50/80 border border-gray-200 text-gray-900 placeholder-gray-400 rounded-xl px-3.5 py-2.5 text-xs min-h-[42px] focus:bg-white focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 transition-all"
               />
@@ -1116,7 +1116,7 @@ export const SourcesTab: React.FC<SourcesTabProps> = ({
                             </label>
                             <input
                               type="text"
-                              value={editSelector}
+                              value={editSelector || ''}
                               onChange={(e) => setEditSelector(e.target.value)}
                               placeholder=".article-content"
                               className="w-full bg-white border border-gray-300 rounded-lg px-2.5 py-2 text-xs font-mono ltr min-h-[38px] focus:outline-none focus:border-orange-500"

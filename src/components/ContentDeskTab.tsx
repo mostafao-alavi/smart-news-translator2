@@ -35,7 +35,7 @@ interface ContentDeskTabProps {
   onCreateCustomArticle?: (title: string, content: string, model?: string) => Promise<boolean>;
   isTriggeringScraper: boolean;
   isTriggeringTranslator: boolean;
-  onNavigateTab?: (tab: 'dashboard' | 'sources' | 'content-desk' | 'destinations' | 'reports' | 'settings', subTab?: string) => void;
+  onNavigateTab?: (tab: 'dashboard' | 'sources' | 'content-desk' | 'destinations' | 'settings', subTab?: string) => void;
   initialSubTab?: string;
 }
 
@@ -249,7 +249,7 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
           <Search className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            value={searchTerm}
+            value={searchTerm || ''}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="جستجو در عناوین و متون اخبار..."
             className="w-full pl-3 pr-9 py-2 text-xs bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-orange-500 focus:outline-none transition-colors"
@@ -445,7 +445,7 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
                   </label>
                   <input
                     type="text"
-                    value={currentTitle}
+                    value={currentTitle || ''}
                     onChange={(e) => {
                       if (!selectedArticleId) return;
                       setDetailsMap((prev) => ({
@@ -492,7 +492,7 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
                     </div>
                   ) : fullTranslatedContent ? (
                     <textarea
-                      value={fullTranslatedContent}
+                      value={fullTranslatedContent || ''}
                       onChange={(e) => {
                         if (!selectedArticleId) return;
                         setDetailsMap((prev) => ({

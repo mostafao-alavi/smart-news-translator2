@@ -17,7 +17,6 @@ export type MainAppTab =
   | 'sources'
   | 'content-desk'
   | 'destinations'
-  | 'reports'
   | 'settings';
 
 interface NavbarProps {
@@ -127,20 +126,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>مقاصد و توزیع</span>
             </button>
 
-            {/* 5. Reports & Logs */}
-            <button
-              onClick={() => setActiveTab('reports')}
-              className={`flex items-center gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all min-h-[44px] cursor-pointer ${
-                activeTab === 'reports'
-                  ? 'bg-orange-500 text-white shadow-xs font-bold'
-                  : 'text-gray-700 hover:bg-gray-100 hover:text-gray-900'
-              }`}
-            >
-              <BarChart3 className="w-4 h-4 shrink-0" />
-              <span>گزارش‌ها و لاگ‌ها</span>
-            </button>
-
-            {/* 6. System & AI Settings */}
+            {/* 5. System & AI Settings */}
             <button
               onClick={() => setActiveTab('settings')}
               className={`flex items-center gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all min-h-[44px] cursor-pointer ${

@@ -5,7 +5,6 @@ import { DashboardTab } from './DashboardTab';
 import { InputSourcesTab } from './InputSourcesTab';
 import { ContentDeskTab } from './ContentDeskTab';
 import { DestinationsTab } from './DestinationsTab';
-import { ReportsLogsTab } from './ReportsLogsTab';
 import { SystemAISettingsTab } from './SystemAISettingsTab';
 import { JoinedArticleNews, SourceItem, StatsData, WorkerFileInfo } from '../types/client';
 
@@ -18,8 +17,7 @@ export const AppDashboard: React.FC = () => {
     if (path.includes('sources') || path.includes('rss') || path.includes('categories')) return 'sources';
     if (path.includes('content') || path.includes('news') || path.includes('desk') || path.includes('pending') || path.includes('review') || path.includes('archive')) return 'content-desk';
     if (path.includes('destinations') || path.includes('wordpress') || path.includes('wp') || path.includes('social') || path.includes('api')) return 'destinations';
-    if (path.includes('reports') || path.includes('logs') || path.includes('distributions')) return 'reports';
-    if (path.includes('settings') || path.includes('d1') || path.includes('database') || path.includes('users') || path.includes('prompts')) return 'settings';
+    if (path.includes('settings') || path.includes('d1') || path.includes('database') || path.includes('users') || path.includes('prompts') || path.includes('logs') || path.includes('reports')) return 'settings';
     return 'dashboard';
   };
 
@@ -455,20 +453,7 @@ export const AppDashboard: React.FC = () => {
           />
         )}
 
-        {/* Tab 5: 📊 Reports & System Logs */}
-        {activeTab === 'reports' && (
-          <ReportsLogsTab
-            onTriggerScraper={handleTriggerScraper}
-            onTriggerTranslator={handleTriggerTranslator}
-            onResetDatabase={handleResetDatabase}
-            isTriggeringScraper={isTriggeringScraper}
-            isTriggeringTranslator={isTriggeringTranslator}
-            workerFiles={workerFiles}
-            initialSubTab={(activeSubTab as any) || 'tracing'}
-          />
-        )}
-
-        {/* Tab 6: ⚙️ System & AI Settings */}
+        {/* Tab 5: ⚙️ System & AI Settings */}
         {activeTab === 'settings' && (
           <SystemAISettingsTab
             onTriggerScraper={handleTriggerScraper}

@@ -70,6 +70,68 @@ function getGeminiClient(apiKey?: string): GoogleGenAI | null {
   return geminiClient;
 }
 
+// Resilient Gemini text generator with automatic fallback across models on 503 / 429
+async function generateTextWithGeminiFallback(
+  apiKey: string,
+  prompt: string,
+  preferredModel?: string
+): Promise<{ text: string; modelUsed: string } | null> {
+  const modelsToTry = [
+    preferredModel || 'gemini-2.5-flash',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite',
+    'gemini-3.7-flash',
+  ].filter((m, idx, arr) => arr.indexOf(m) === idx);
+
+  for (const model of modelsToTry) {
+    // 1. Try Gemini SDK
+    try {
+      const ai = getGeminiClient(apiKey);
+      if (ai) {
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+        });
+        const text = response?.text?.trim();
+        if (text) {
+          return { text, modelUsed: model };
+        }
+      }
+    } catch (sdkErr: any) {
+      const isCapacityError = sdkErr?.message?.includes('503') || sdkErr?.message?.includes('high demand') || sdkErr?.status === 503;
+      if (!isCapacityError) {
+        console.warn(`[Gemini SDK] Note on model ${model}:`, sdkErr.message || sdkErr);
+      }
+    }
+
+    // 2. Direct HTTP Fallback for this model
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+          }),
+        }
+      );
+
+      if (response.ok) {
+        const json: any = await response.json();
+        const text = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+        if (text) {
+          return { text, modelUsed: model };
+        }
+      }
+    } catch (httpErr: any) {
+      // Continue to next model in fallback list
+    }
+  }
+
+  return null;
+}
+
 /**
  * Model Router Selection based on target language
  */
@@ -126,45 +188,11 @@ export async function translateTextWithAI(
 متن اصلی انگلیسی:
 ${truncatedText}`;
 
-  // 1. Try Gemini API first (via GoogleGenAI SDK or direct HTTP)
+  // 1. Try Gemini API first with resilient fallback models
   if (apiKey && (isGeminiRequested || !env.AI)) {
-    try {
-      const ai = getGeminiClient(apiKey);
-      if (ai) {
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.7-flash',
-          contents: translationPrompt,
-        });
-        const translated = response?.text?.trim();
-        if (translated) {
-          return { translatedText: translated, modelUsed: 'gemini-3.7-flash' };
-        }
-      }
-    } catch (sdkErr) {
-      console.warn('Gemini SDK translation failed, falling back to HTTP:', sdkErr);
-    }
-
-    // Direct HTTP fetch fallback for Gemini
-    try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: translationPrompt }]
-          }]
-        })
-      });
-
-      if (response.ok) {
-        const json: any = await response.json();
-        const translated = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        if (translated) {
-          return { translatedText: translated, modelUsed: 'gemini-3.7-flash' };
-        }
-      }
-    } catch (e) {
-      console.warn('Gemini HTTP translation failed:', e);
+    const geminiRes = await generateTextWithGeminiFallback(apiKey, translationPrompt, preferredModel);
+    if (geminiRes && geminiRes.text) {
+      return { translatedText: geminiRes.text, modelUsed: geminiRes.modelUsed };
     }
   }
 
@@ -272,47 +300,12 @@ ${truncatedContent}
 ۴. خروجی فقط و فقط باید فرمت معتبر JSON باشد بدون هیچ توضیح اضافی، بدون مقدمه و بدون کد بلاک markdown.`;
 
   if (apiKey) {
-    // 1. Try Gemini SDK
-    try {
-      const ai = getGeminiClient(apiKey);
-      if (ai) {
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.7-flash',
-          contents: seoPrompt,
-        });
-
-        const rawText = response?.text?.trim() || '';
-        const parsed = parseSeoJson(rawText);
-        if (parsed) {
-          return { ...parsed, modelUsed: 'gemini-3.7-flash' };
-        }
+    const geminiRes = await generateTextWithGeminiFallback(apiKey, seoPrompt, preferredModel);
+    if (geminiRes && geminiRes.text) {
+      const parsed = parseSeoJson(geminiRes.text);
+      if (parsed) {
+        return { ...parsed, modelUsed: geminiRes.modelUsed };
       }
-    } catch (e) {
-      console.warn('Gemini SDK SEO generation failed:', e);
-    }
-
-    // 2. Try Gemini HTTP
-    try {
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.7-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: seoPrompt }]
-          }]
-        })
-      });
-
-      if (response.ok) {
-        const json: any = await response.json();
-        const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
-        const parsed = parseSeoJson(rawText);
-        if (parsed) {
-          return { ...parsed, modelUsed: 'gemini-3.7-flash' };
-        }
-      }
-    } catch (e) {
-      console.warn('Gemini HTTP SEO generation failed:', e);
     }
   }
 

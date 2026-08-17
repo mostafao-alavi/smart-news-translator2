@@ -271,7 +271,7 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
             <input
               type="text"
               placeholder="جستجو..."
-              value={searchTerm}
+              value={searchTerm || ''}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full bg-gray-50/80 border border-gray-200/90 text-gray-900 placeholder-gray-400 rounded-xl pe-9 ps-3 py-2 text-xs focus:outline-none focus:border-orange-500 focus:bg-white"
             />
@@ -339,7 +339,7 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
               <input
                 type="text"
                 placeholder="e.g. Breakthrough in Edge AI Neural Accelerators Announced"
-                value={customTitle}
+                value={customTitle || ''}
                 onChange={(e) => setCustomTitle(e.target.value)}
                 required
                 className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:border-emerald-500 ltr text-left"
@@ -351,7 +351,7 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
               <textarea
                 rows={2}
                 placeholder="e.g. Researchers have achieved instantaneous multi-language processing on Cloudflare Workers."
-                value={customContent}
+                value={customContent || ''}
                 onChange={(e) => setCustomContent(e.target.value)}
                 className="w-full bg-white border border-gray-300 rounded-xl px-3 py-2 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:border-emerald-500 ltr text-left"
               />

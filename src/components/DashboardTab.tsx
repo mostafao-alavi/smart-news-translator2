@@ -32,7 +32,7 @@ interface DashboardTabProps {
   sources: SourceItem[];
   onTriggerScraper: () => void;
   onTriggerTranslator: () => void;
-  onNavigateTab: (tab: 'dashboard' | 'sources' | 'content-desk' | 'destinations' | 'reports' | 'settings', subTab?: string) => void;
+  onNavigateTab: (tab: 'dashboard' | 'sources' | 'content-desk' | 'destinations' | 'settings', subTab?: string) => void;
   isTriggeringScraper: boolean;
   isTriggeringTranslator: boolean;
   onTranslateArticle: (id: number) => Promise<any>;
