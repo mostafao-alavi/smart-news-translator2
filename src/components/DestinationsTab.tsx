@@ -412,18 +412,44 @@ export const DestinationsTab: React.FC<DestinationsTabProps> = ({
             {/* Test Feedback */}
             {wpTestResult && (
               <div
-                className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                className={`p-4 rounded-xl border text-xs space-y-2 ${
                   wpTestResult.success
                     ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                     : 'bg-rose-50 border-rose-200 text-rose-800'
                 }`}
               >
-                {wpTestResult.success ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                ) : (
-                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <div className="flex items-start gap-2">
+                  {wpTestResult.success ? (
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                  )}
+                  <div className="flex-1 font-medium leading-relaxed">
+                    {wpTestResult.message}
+                  </div>
+                </div>
+
+                {!wpTestResult.success && (
+                  <div className="mt-2 pt-2 border-t border-rose-200/70 text-[11px] text-rose-900 bg-white/70 p-3 rounded-lg space-y-1.5 leading-relaxed">
+                    <div className="font-bold flex items-center gap-1 text-rose-950">
+                      💡 راهنمای رفع خطای اتصال و تنظیمات امنیتی وردپرس:
+                    </div>
+                    <ul className="list-disc list-inside space-y-1 text-gray-700">
+                      <li>
+                        <strong>تولید Application Password جدید:</strong> در پیشخوان وردپرس به مسیر <em>کاربران &gt; شناسنامه شما &gt; رمزهای عبور برنامه</em> بروید و یک نام (مثل hazardastan) وارد کرده و دکمه افزودن رمز عبور را بزنید. سپس رمز تولیدشده (مثال: <code className="bg-gray-100 px-1 py-0.5 rounded font-mono text-[10px]">abcd efgh ijkl mnop</code>) را در کادر زیر وارد کنید.
+                      </li>
+                      <li>
+                        <strong>رفع مسدودی هدر Authorization در .htaccess:</strong> اگر سرور یا افزونه‌های امنیتی هدر احراز هویت را حذف می‌کنند، کدهای زیر را به بالای فایل <code className="bg-gray-100 px-1 py-0.5 rounded font-mono text-[10px]">.htaccess</code> وردپرس اضافه کنید:
+                        <pre className="bg-slate-900 text-emerald-400 p-2 rounded mt-1 font-mono text-[10px] dir-ltr text-left overflow-x-auto">
+                          {`RewriteEngine On\nRewriteCond %{HTTP:Authorization} ^(.*)\nRewriteRule ^(.*) - [E=HTTP_AUTHORIZATION:%1]`}
+                        </pre>
+                      </li>
+                      <li>
+                        <strong>افزونه‌های امنیتی (Wordfence / iThemes):</strong> اطمینان حاصل کنید دسترسی REST API به اندپوینت‌های <code className="font-mono text-[10px]">/wp-json/wp/v2/users/me</code> و <code className="font-mono text-[10px]">/wp-json/wp/v2/posts</code> مسدود نشده باشد.
+                      </li>
+                    </ul>
+                  </div>
                 )}
-                <span>{wpTestResult.message}</span>
               </div>
             )}
 
@@ -492,9 +518,12 @@ export const DestinationsTab: React.FC<DestinationsTabProps> = ({
                   type="password"
                   value={wpAppPassword || ''}
                   onChange={(e) => setWpAppPassword(e.target.value)}
-                  placeholder="xxxx xxxx xxxx xxxx"
+                  placeholder="مثال: abcd efgh ijkl mnop"
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-mono dir-ltr text-left focus:bg-white focus:outline-none focus:border-purple-500 transition-colors"
                 />
+                <p className="text-[10px] text-gray-500 mt-1">
+                  برای تغییر رمز، رمز جدید تولید شده در وردپرس را در کادر بالا وارد کرده و دکمه «ذخیره تنظیمات» یا «تست اتصال» را بزنید.
+                </p>
               </div>
 
               {/* Auto Publish Toggle */}

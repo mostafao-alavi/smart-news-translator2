@@ -7,6 +7,46 @@ export interface WpSyncResult {
 }
 
 /**
+ * Safely encode any string to Base64 in UTF-8 without throwing Latin1/ISO-8859-1 errors
+ */
+export function safeBase64Encode(str: string): string {
+  try {
+    const bytes = new TextEncoder().encode(str);
+    let binary = '';
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  } catch {
+    return btoa(unescape(encodeURIComponent(str)));
+  }
+}
+
+/**
+ * Normalizes and cleans WordPress REST API URL endpoint
+ */
+export function normalizeWpApiEndpoint(rawUrl: string, resource: 'posts' | 'media' | 'tags' | 'users/me' | 'types/post' = 'posts'): string {
+  let clean = rawUrl.trim().replace(/\/+$/, '');
+  
+  // Strip sub-resources if already appended
+  clean = clean.replace(/\/wp-json\/wp\/v2\/(posts|media|tags|users\/me|types\/post)$/, '');
+  clean = clean.replace(/\/wp\/v2\/(posts|media|tags|users\/me|types\/post)$/, '');
+  clean = clean.replace(/\/(posts|media|tags|users\/me|types\/post)$/, '');
+
+  // If URL doesn't include /wp-json/wp/v2 yet
+  if (!clean.includes('/wp-json/wp/v2')) {
+    if (clean.endsWith('/wp-json')) {
+      clean = `${clean}/wp/v2`;
+    } else {
+      clean = `${clean}/wp-json/wp/v2`;
+    }
+  }
+
+  return `${clean}/${resource}`;
+}
+
+/**
  * Uploads an image from external URL to WordPress Media Library
  */
 export async function uploadWordPressMedia(
@@ -17,10 +57,7 @@ export async function uploadWordPressMedia(
   title?: string
 ): Promise<number | null> {
   try {
-    const cleanUrl = apiUrl.trim().replace(/\/+$/, '');
-    const mediaEndpoint = cleanUrl.endsWith('/posts')
-      ? cleanUrl.replace(/\/posts$/, '/media')
-      : (cleanUrl.endsWith('/wp/v2') ? `${cleanUrl}/media` : `${cleanUrl}/wp/v2/media`);
+    const mediaEndpoint = normalizeWpApiEndpoint(apiUrl, 'media');
 
     console.log(`[WordPress] Fetching remote image for upload: ${imageUrl}`);
     const imgRes = await fetch(imageUrl, {
@@ -40,7 +77,9 @@ export async function uploadWordPressMedia(
     const filename = `news-${Date.now()}.${ext}`;
     const imageBlob = await imgRes.arrayBuffer();
 
-    const authHeader = `Basic ${btoa(`${username.trim()}:${appPassword.trim()}`)}`;
+    const cleanUser = username.trim();
+    const cleanPass = appPassword.trim();
+    const authHeader = `Basic ${safeBase64Encode(`${cleanUser}:${cleanPass}`)}`;
 
     console.log(`[WordPress] Uploading media to ${mediaEndpoint}`);
     const uploadRes = await fetch(mediaEndpoint, {
@@ -97,11 +136,7 @@ export async function ensureWordPressTags(
 
   if (tagNames.length === 0) return [];
 
-  const cleanUrl = apiUrl.trim().replace(/\/+$/, '');
-  const tagsEndpoint = cleanUrl.endsWith('/posts')
-    ? cleanUrl.replace(/\/posts$/, '/tags')
-    : (cleanUrl.endsWith('/wp/v2') ? `${cleanUrl}/tags` : `${cleanUrl}/wp/v2/tags`);
-
+  const tagsEndpoint = normalizeWpApiEndpoint(apiUrl, 'tags');
   const tagIds: number[] = [];
 
   for (const name of tagNames.slice(0, 10)) {
@@ -182,15 +217,13 @@ export async function distributeToWordPress(
 
   if (!username || !password) {
     console.warn('[WordPress] Skipping live publish: WP_USERNAME or WP_APPLICATION_PASSWORD not set');
-    return { ok: false, error: 'WP credentials not configured' };
+    return { ok: false, error: 'اطلاعات احراز هویت وردپرس (WP_USERNAME یا WP_APPLICATION_PASSWORD) تنظیم نشده است.' };
   }
 
-  const postsEndpoint = apiUrl.endsWith('/posts') || apiUrl.endsWith('/posts/')
-    ? apiUrl
-    : `${apiUrl.replace(/\/+$/, '')}/posts`;
+  const postsEndpoint = normalizeWpApiEndpoint(apiUrl, 'posts');
 
   try {
-    const authHeader = `Basic ${btoa(`${username}:${password}`)}`;
+    const authHeader = `Basic ${safeBase64Encode(`${username}:${password}`)}`;
 
     // 1. Upload featured image if available
     let featuredMediaId: number | null = null;
@@ -252,7 +285,7 @@ export async function distributeToWordPress(
 
     if (!res.ok && res.status !== 201) {
       const errText = await res.text();
-      const errMessage = `WordPress error (HTTP ${res.status}): ${errText.slice(0, 200)}`;
+      const errMessage = `خطای وردپرس (کد ${res.status}): ${errText.slice(0, 200)}`;
       console.error(errMessage);
 
       // Log in DB_ARCHIVE / DB
@@ -399,54 +432,87 @@ export async function testWordPressConnection(
   apiUrl: string,
   username: string,
   appPassword: string
-): Promise<{ success: boolean; message: string; user?: any }> {
+): Promise<{ success: boolean; message: string; user?: any; details?: any }> {
   try {
-    const cleanUrl = apiUrl.trim();
-    const cleanUser = username.trim();
-    const cleanPass = appPassword.trim();
+    const cleanUser = (username || '').trim();
+    const cleanPass = (appPassword || '').trim();
 
-    if (!cleanUser || !cleanPass) {
+    if (!cleanUser) {
       return {
         success: false,
-        message: 'نام کاربری و رمز عبور برنامه‌ای (Application Password) وردپرس الزامی است.',
+        message: 'نام کاربری وردپرس وارد نشده است.',
       };
     }
 
-    let userMeEndpoint = cleanUrl;
-    if (userMeEndpoint.endsWith('/posts') || userMeEndpoint.endsWith('/posts/')) {
-      userMeEndpoint = userMeEndpoint.replace(/\/posts\/?$/, '/users/me');
-    } else {
-      userMeEndpoint = `${userMeEndpoint.replace(/\/+$/, '')}/users/me`;
+    if (!cleanPass || cleanPass === '••••••••••••••••' || cleanPass.includes('•')) {
+      return {
+        success: false,
+        message: 'رمز عبور برنامه‌ای (Application Password) معتبر وارد نشده است. لطفاً رمز واقعی ایجاد شده در بخش کاربران وردپرس را وارد کنید.',
+      };
     }
-    const authHeader = `Basic ${btoa(`${cleanUser}:${cleanPass}`)}`;
+
+    const userMeEndpoint = normalizeWpApiEndpoint(apiUrl, 'users/me');
+    const authHeader = `Basic ${safeBase64Encode(`${cleanUser}:${cleanPass}`)}`;
+
+    console.log(`[WordPress Test] Checking endpoint: ${userMeEndpoint} with user: ${cleanUser}`);
 
     const response = await fetch(userMeEndpoint, {
       method: 'GET',
       headers: {
         'Authorization': authHeader,
         'Content-Type': 'application/json',
-        'User-Agent': 'CloudflareWorker-NewsSync/1.0',
+        'User-Agent': 'CloudflareWorker-NewsSync/2.0 (Hazardastan)',
       },
     });
 
     if (response.ok) {
       const userData: any = await response.json();
+      const displayName = userData.name || cleanUser;
+      const roles = Array.isArray(userData.roles) ? userData.roles.join(', ') : 'کاربر احراز هویت شده';
       return {
         success: true,
-        message: `ارتباط با REST API وردپرس با موفقیت برقرار شد. کاربر: ${userData.name || cleanUser} (${userData.slug || ''})`,
+        message: `اتصال REST API وردپرس با موفقیت تایید شد. کاربر: ${displayName} | نقش: ${roles}`,
         user: userData,
       };
-    } else {
-      const errorText = await response.text();
+    }
+
+    // Handle common HTTP error codes
+    const status = response.status;
+    const errorText = await response.text();
+
+    if (status === 401) {
       return {
         success: false,
-        message: `خطای احراز هویت در وردپرس (کد ${response.status}): ${errorText.slice(0, 200)}`,
+        message: `خطای احراز هویت (۴۰۱ Unauthorized): نام کاربری یا رمز عبور برنامه (Application Password) اشتباه است یا هدر Authorization توسط سرور/فایل .htaccess مسدود شده است.`,
+        details: errorText.slice(0, 300),
       };
     }
+
+    if (status === 403) {
+      return {
+        success: false,
+        message: `دسترسی مسدود شد (۴۰۳ Forbidden): فایروال هاست، Cloudflare یا افزونه امنیتی وردپرس (مانند Wordfence یا iThemes) دسترسی REST API به مسیر users/me را مسدود کرده است.`,
+        details: errorText.slice(0, 300),
+      };
+    }
+
+    if (status === 404) {
+      return {
+        success: false,
+        message: `آدرس REST API یافت نشد (۴۰۴ Not Found): بررسی کنید پیوندهای یکتا در وردپرس (Permalinks) روی «نام نوشته» تنظیم شده باشد و آدرس سرور معتبر باشد.`,
+        details: errorText.slice(0, 300),
+      };
+    }
+
+    return {
+      success: false,
+      message: `خطای پاسخ وردپرس (کد ${status}): ${errorText.slice(0, 200)}`,
+      details: errorText,
+    };
   } catch (err: any) {
     return {
       success: false,
-      message: `خطا در برقراری اتصال به وردپرس: ${err.message}`,
+      message: `خطا در برقراری اتصال به سرور وردپرس: ${err.message}`,
     };
   }
 }

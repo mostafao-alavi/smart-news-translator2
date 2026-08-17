@@ -1729,24 +1729,40 @@ api.post('/wp-sync/test-connection', async (c) => {
     } catch {}
 
     const apiUrl = (body.api_url || c.env.WP_API_URL || 'https://updaaate.ir/wp-json/wp/v2/').trim();
-    const username = (body.username || c.env.WP_USERNAME || '').trim();
+    let username = (body.username || c.env.WP_USERNAME || '').trim();
     let appPassword = (body.app_password || c.env.WP_APPLICATION_PASSWORD || '').trim();
 
-    // If the frontend sends the masked password, fetch the real one from the DB
-    if (appPassword === '••••••••••••••••') {
-      try {
-        const platform = await c.env.DB.prepare('SELECT auth_password_secret FROM platforms WHERE api_url = ? AND auth_username = ?').bind(apiUrl, username).first() as any;
-        if (platform && platform.auth_password_secret) {
-          appPassword = platform.auth_password_secret;
-        }
-      } catch (err) {}
+    // If the frontend sends the masked password or empty, fetch the real one from DB or ENV
+    if (!appPassword || appPassword === '••••••••••••••••' || appPassword.includes('•')) {
+      if (c.env.WP_APPLICATION_PASSWORD && !c.env.WP_APPLICATION_PASSWORD.includes('•')) {
+        appPassword = c.env.WP_APPLICATION_PASSWORD.trim();
+      } else if (c.env.DB) {
+        try {
+          const platform = await c.env.DB.prepare(`
+            SELECT auth_password_secret, auth_username, api_url 
+            FROM platforms 
+            WHERE platform_type = 'wordpress' OR slug = 'updaaate_ir' 
+            ORDER BY id ASC LIMIT 1
+          `).first() as any;
+          if (platform && platform.auth_password_secret && !platform.auth_password_secret.includes('•')) {
+            appPassword = platform.auth_password_secret.trim();
+            if (!username && platform.auth_username) {
+              username = platform.auth_username.trim();
+            }
+          }
+        } catch (err) {}
+      }
     }
 
-    if (!username || !appPassword) {
+    if (!username) {
+      username = (c.env.WP_USERNAME || '1000dastan').trim();
+    }
+
+    if (!appPassword || appPassword === '••••••••••••••••' || appPassword.includes('•')) {
       return c.json({
         success: false,
         data: null,
-        error: 'نام کاربری (WP_USERNAME) و رمز عبور برنامه (WP_APPLICATION_PASSWORD) ارسال نشده است.',
+        error: 'رمز عبور برنامه‌ای (Application Password) وردپرس وارد نشده است. لطفاً رمز عبور واقعی ایجاد شده در بخش کاربران وردپرس (کاربران > شناسنامه شما > رمزهای عبور برنامه) را در کادر مربوطه تایپ کرده و ذخیره نمایید.',
       }, 400);
     }
 
