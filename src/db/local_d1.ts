@@ -9,9 +9,11 @@ try {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       rss_url TEXT NOT NULL UNIQUE,
+      url TEXT,
       base_url TEXT NOT NULL,
       language TEXT DEFAULT 'en',
       category TEXT DEFAULT 'crypto',
+      selector TEXT,
       is_active INTEGER DEFAULT 1,
       scrape_limit INTEGER DEFAULT 10,
       last_scraped_at TEXT,
@@ -24,11 +26,19 @@ try {
       external_id TEXT,
       title TEXT NOT NULL,
       link TEXT NOT NULL UNIQUE,
+      original_url TEXT,
+      content TEXT,
       summary TEXT,
       featured_image TEXT,
       published_at TEXT,
       scraped_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       status TEXT DEFAULT 'pending',
+      translation_status TEXT DEFAULT 'pending',
+      wp_sync_status TEXT DEFAULT 'pending',
+      wp_post_id INTEGER,
+      wp_published_at TEXT,
+      wp_error TEXT,
       FOREIGN KEY (source_id) REFERENCES sources(id)
     );
 
@@ -99,9 +109,33 @@ try {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     );
 
-    INSERT OR IGNORE INTO sources (id, name, rss_url, base_url, language, category, is_active, scrape_limit)
-    VALUES (1, 'Cointelegraph', 'https://cointelegraph.com/rss', 'https://cointelegraph.com', 'en', 'crypto', 1, 10);
+    INSERT OR IGNORE INTO sources (id, name, rss_url, url, base_url, language, category, is_active, scrape_limit)
+    VALUES (1, 'Cointelegraph', 'https://cointelegraph.com/rss', 'https://cointelegraph.com/rss', 'https://cointelegraph.com', 'en', 'crypto', 1, 10);
   `);
+
+  // Run dynamic column migrations for existing SQLite schemas
+  const safeAddColumn = (tbl: string, colDef: string) => {
+    try { sqlite.exec(`ALTER TABLE ${tbl} ADD COLUMN ${colDef}`); } catch {}
+  };
+
+  safeAddColumn('articles', 'original_url TEXT');
+  safeAddColumn('articles', 'content TEXT');
+  safeAddColumn('articles', 'created_at TEXT');
+  safeAddColumn('articles', 'translation_status TEXT DEFAULT "pending"');
+  safeAddColumn('articles', 'wp_sync_status TEXT DEFAULT "pending"');
+  safeAddColumn('articles', 'wp_post_id INTEGER');
+  safeAddColumn('articles', 'wp_published_at TEXT');
+  safeAddColumn('articles', 'wp_error TEXT');
+
+  safeAddColumn('sources', 'url TEXT');
+  safeAddColumn('sources', 'selector TEXT');
+
+  // Backfill aliases
+  try {
+    sqlite.exec(`UPDATE articles SET original_url = link WHERE original_url IS NULL;`);
+    sqlite.exec(`UPDATE articles SET created_at = scraped_at WHERE created_at IS NULL;`);
+    sqlite.exec(`UPDATE sources SET url = rss_url WHERE url IS NULL;`);
+  } catch {}
 } catch (e: any) {
   console.warn('[Local D1] SQLite initialization notice:', e.message);
 }
