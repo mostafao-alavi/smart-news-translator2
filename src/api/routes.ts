@@ -530,28 +530,34 @@ api.post('/sources', async (c) => {
     };
     const baseUrl = getBaseUrl(trimmedUrl);
 
-    // Insert new source with schema repair fallback
+    // Insert new source with resilient multi-schema fallback (supports both base_url, rss_url, or simple schema)
     let result: any;
     try {
       result = await c.env.DB.prepare(
-        'INSERT INTO sources (name, url, rss_url, base_url, language, category, selector, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-      ).bind(trimmedName, trimmedUrl, trimmedUrl, baseUrl, lang, cat, sel, limit, active).run();
-    } catch (insertErr: any) {
+        'INSERT INTO sources (name, url, base_url, language, category, selector, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(trimmedName, trimmedUrl, baseUrl, lang, cat, sel, limit, active).run();
+    } catch {
       try {
         result = await c.env.DB.prepare(
-          'INSERT INTO sources (name, url, language, category, selector, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)'
-        ).bind(trimmedName, trimmedUrl, lang, cat, sel, limit, active).run();
+          'INSERT INTO sources (name, url, rss_url, base_url, language, category, selector, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        ).bind(trimmedName, trimmedUrl, trimmedUrl, baseUrl, lang, cat, sel, limit, active).run();
       } catch {
-        // Force schema update and retry
-        await ensureTablesAndLogs(c.env.DB, true);
         try {
           result = await c.env.DB.prepare(
             'INSERT INTO sources (name, url, language, category, selector, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)'
           ).bind(trimmedName, trimmedUrl, lang, cat, sel, limit, active).run();
         } catch {
-          result = await c.env.DB.prepare(
-            'INSERT INTO sources (name, url, language, category) VALUES (?, ?, ?, ?)'
-          ).bind(trimmedName, trimmedUrl, lang, cat).run();
+          // Force schema update and retry
+          await ensureTablesAndLogs(c.env.DB, true);
+          try {
+            result = await c.env.DB.prepare(
+              'INSERT INTO sources (name, url, base_url, language, category, selector, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            ).bind(trimmedName, trimmedUrl, baseUrl, lang, cat, sel, limit, active).run();
+          } catch {
+            result = await c.env.DB.prepare(
+              'INSERT INTO sources (name, url, language, category) VALUES (?, ?, ?, ?)'
+            ).bind(trimmedName, trimmedUrl, lang, cat).run();
+          }
         }
       }
     }
@@ -631,14 +637,21 @@ api.post('/sources/restore-defaults', async (c) => {
           const baseUrl = new URL(src.url).origin;
           try {
             await c.env.DB.prepare(
-              'INSERT INTO sources (name, url, rss_url, base_url, language, category, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-            ).bind(src.name, src.url, src.url, baseUrl, src.language, src.category, src.scrape_limit, src.is_active).run();
+              'INSERT INTO sources (name, url, base_url, language, category, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)'
+            ).bind(src.name, src.url, baseUrl, src.language, src.category, src.scrape_limit, src.is_active).run();
             insertedCount++;
           } catch {
-            await c.env.DB.prepare(
-              'INSERT INTO sources (name, url, language, category, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?)'
-            ).bind(src.name, src.url, src.language, src.category, src.scrape_limit, src.is_active).run();
-            insertedCount++;
+            try {
+              await c.env.DB.prepare(
+                'INSERT INTO sources (name, url, rss_url, base_url, language, category, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+              ).bind(src.name, src.url, src.url, baseUrl, src.language, src.category, src.scrape_limit, src.is_active).run();
+              insertedCount++;
+            } catch {
+              await c.env.DB.prepare(
+                'INSERT INTO sources (name, url, language, category, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?)'
+              ).bind(src.name, src.url, src.language, src.category, src.scrape_limit, src.is_active).run();
+              insertedCount++;
+            }
           }
         } catch (err) {
           console.warn('Error inserting default source:', err);
