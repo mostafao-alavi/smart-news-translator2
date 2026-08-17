@@ -525,28 +525,40 @@ api.post('/sources', async (c) => {
       }
     }
 
+    const getBaseUrl = (u: string) => {
+      try { return new URL(u).origin; } catch { return u; }
+    };
+    const baseUrl = getBaseUrl(trimmedUrl);
+
     // Insert new source with schema repair fallback
     let result: any;
     try {
       result = await c.env.DB.prepare(
-        'INSERT INTO sources (name, url, language, category, selector, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).bind(trimmedName, trimmedUrl, lang, cat, sel, limit, active).run();
+        'INSERT INTO sources (name, url, rss_url, base_url, language, category, selector, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).bind(trimmedName, trimmedUrl, trimmedUrl, baseUrl, lang, cat, sel, limit, active).run();
     } catch (insertErr: any) {
-      // Force schema update and retry
-      await ensureTablesAndLogs(c.env.DB, true);
       try {
         result = await c.env.DB.prepare(
           'INSERT INTO sources (name, url, language, category, selector, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)'
         ).bind(trimmedName, trimmedUrl, lang, cat, sel, limit, active).run();
       } catch {
-        result = await c.env.DB.prepare(
-          'INSERT INTO sources (name, url, language, category) VALUES (?, ?, ?, ?)'
-        ).bind(trimmedName, trimmedUrl, lang, cat).run();
+        // Force schema update and retry
+        await ensureTablesAndLogs(c.env.DB, true);
+        try {
+          result = await c.env.DB.prepare(
+            'INSERT INTO sources (name, url, language, category, selector, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)'
+          ).bind(trimmedName, trimmedUrl, lang, cat, sel, limit, active).run();
+        } catch {
+          result = await c.env.DB.prepare(
+            'INSERT INTO sources (name, url, language, category) VALUES (?, ?, ?, ?)'
+          ).bind(trimmedName, trimmedUrl, lang, cat).run();
+        }
       }
     }
 
+    const newId = result?.meta?.last_row_id || result?.meta?.lastInsertRowid || result?.lastRowId || Date.now();
     const newSource: Source = {
-      id: result.meta.last_row_id as number,
+      id: Number(newId),
       name: trimmedName,
       url: trimmedUrl,
       language: lang,
@@ -616,10 +628,18 @@ api.post('/sources/restore-defaults', async (c) => {
       const match: any = existing.find((e: any) => normalizeUrl(e.url) === normalizeUrl(src.url));
       if (!match) {
         try {
-          await c.env.DB.prepare(
-            'INSERT INTO sources (name, url, language, category, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?)'
-          ).bind(src.name, src.url, src.language, src.category, src.scrape_limit, src.is_active).run();
-          insertedCount++;
+          const baseUrl = new URL(src.url).origin;
+          try {
+            await c.env.DB.prepare(
+              'INSERT INTO sources (name, url, rss_url, base_url, language, category, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            ).bind(src.name, src.url, src.url, baseUrl, src.language, src.category, src.scrape_limit, src.is_active).run();
+            insertedCount++;
+          } catch {
+            await c.env.DB.prepare(
+              'INSERT INTO sources (name, url, language, category, scrape_limit, is_active) VALUES (?, ?, ?, ?, ?, ?)'
+            ).bind(src.name, src.url, src.language, src.category, src.scrape_limit, src.is_active).run();
+            insertedCount++;
+          }
         } catch (err) {
           console.warn('Error inserting default source:', err);
         }

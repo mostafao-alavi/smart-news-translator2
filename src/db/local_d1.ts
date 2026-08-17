@@ -8,9 +8,9 @@ try {
     CREATE TABLE IF NOT EXISTS sources (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
-      rss_url TEXT NOT NULL UNIQUE,
-      url TEXT,
-      base_url TEXT NOT NULL,
+      url TEXT NOT NULL,
+      rss_url TEXT,
+      base_url TEXT,
       language TEXT DEFAULT 'en',
       category TEXT DEFAULT 'crypto',
       selector TEXT,
@@ -130,11 +130,43 @@ try {
   safeAddColumn('sources', 'url TEXT');
   safeAddColumn('sources', 'selector TEXT');
 
+  // Check if sources table has legacy NOT NULL constraints on rss_url or base_url and rebuild if needed
+  try {
+    const tableInfo = sqlite.prepare("PRAGMA table_info(sources)").all() as any[];
+    const rssCol = tableInfo.find((c: any) => c.name === 'rss_url');
+    const baseCol = tableInfo.find((c: any) => c.name === 'base_url');
+    if ((rssCol && rssCol.notnull === 1) || (baseCol && baseCol.notnull === 1)) {
+      sqlite.exec(`
+        CREATE TABLE IF NOT EXISTS sources_v2 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          url TEXT NOT NULL,
+          rss_url TEXT,
+          base_url TEXT,
+          language TEXT DEFAULT 'en',
+          category TEXT DEFAULT 'crypto',
+          selector TEXT,
+          is_active INTEGER DEFAULT 1,
+          scrape_limit INTEGER DEFAULT 10,
+          last_scraped_at TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT OR IGNORE INTO sources_v2 (id, name, url, rss_url, base_url, language, category, selector, is_active, scrape_limit, last_scraped_at, created_at)
+        SELECT id, name, COALESCE(url, rss_url, ''), rss_url, base_url, language, category, selector, is_active, scrape_limit, last_scraped_at, created_at
+        FROM sources;
+        DROP TABLE sources;
+        ALTER TABLE sources_v2 RENAME TO sources;
+      `);
+    }
+  } catch (schemaErr: any) {
+    console.warn('[Local D1] sources schema check:', schemaErr.message);
+  }
+
   // Backfill aliases
   try {
     sqlite.exec(`UPDATE articles SET original_url = link WHERE original_url IS NULL;`);
     sqlite.exec(`UPDATE articles SET created_at = scraped_at WHERE created_at IS NULL;`);
-    sqlite.exec(`UPDATE sources SET url = rss_url WHERE url IS NULL;`);
+    sqlite.exec(`UPDATE sources SET url = rss_url WHERE url IS NULL OR url = '';`);
   } catch {}
 } catch (e: any) {
   console.warn('[Local D1] SQLite initialization notice:', e.message);

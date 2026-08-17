@@ -233,13 +233,22 @@ export const AppDashboard: React.FC = () => {
       const res = await fetch('/api/sources', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, url, category }),
+        body: JSON.stringify({
+          name,
+          url,
+          category: category || 'crypto',
+          language: 'en',
+          scrape_limit: 10,
+          is_active: 1,
+        }),
       });
       const data = await res.json();
       if (data.success) {
         fetchSources();
         fetchStats();
         return true;
+      } else {
+        console.error('Failed to add source:', data.error);
       }
     } catch (e) {
       console.error('Error adding source:', e);

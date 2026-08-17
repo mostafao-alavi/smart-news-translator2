@@ -164,36 +164,27 @@ export const InputSourcesTab: React.FC<InputSourcesTabProps> = ({
   const handleInsertPresetSource = async (preset: PresetSource) => {
     setActionLoading(`insert-${preset.name}`);
     try {
-      if (onAddSource) {
-        const ok = await onAddSource(preset.name, preset.url, preset.category);
-        if (ok) {
-          showFeedback('success', `منبع "${preset.name}" با موفقیت در دیتابیس D1 ثبت و فعال شد.`);
-        } else {
-          showFeedback('error', `خطا در ثبت منبع "${preset.name}".`);
-        }
+      const res = await fetch('/api/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: preset.name,
+          url: preset.url,
+          category: preset.category,
+          language: preset.language || 'en',
+          scrape_limit: 10,
+          is_active: 1,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        if (onRefresh) onRefresh();
+        showFeedback('success', `منبع "${preset.name}" با موفقیت در دیتابیس D1 ثبت و فعال شد.`);
       } else {
-        const res = await fetch('/api/sources', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: preset.name,
-            url: preset.url,
-            category: preset.category,
-            language: preset.language,
-            scrape_limit: 10,
-            is_active: 1,
-          }),
-        });
-        const data = await res.json();
-        if (data.success) {
-          if (onRefresh) onRefresh();
-          showFeedback('success', `منبع "${preset.name}" با موفقیت در دیتابیس D1 ثبت و فعال شد.`);
-        } else {
-          showFeedback('error', data.error || 'خطا در ثبت منبع.');
-        }
+        showFeedback('error', data.error || `خطا در ثبت منبع "${preset.name}".`);
       }
     } catch (err: any) {
-      showFeedback('error', `خطا: ${err.message}`);
+      showFeedback('error', `خطا در برقراری ارتباط: ${err.message}`);
     } finally {
       setActionLoading(null);
     }
