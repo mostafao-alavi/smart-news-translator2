@@ -174,14 +174,30 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
     setPublishingId(id);
     setPublishFeedback(null);
     try {
+      const currentDetail = detailsMap[id];
+      const articleItem = news.find((n) => n.id === id);
+
+      const titleToSend = currentDetail?.translated_title || articleItem?.translated_title || '';
+      const contentToSend = currentDetail?.translated_content || articleItem?.translated_content || '';
+      const tagsToSend = currentDetail?.tags || articleItem?.tags || null;
+
       const res = await fetch(`/api/news/${id}/distribute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ platforms: ['wordpress', 'telegram'] })
+        body: JSON.stringify({
+          platforms: ['wordpress', 'telegram'],
+          translated_title: titleToSend,
+          translated_content: contentToSend,
+          tags: tagsToSend,
+        }),
       });
       const data = await res.json();
       if (data.success) {
-        setPublishFeedback({ id, message: '✅ با موفقیت در وردپرس و تلگرام منتشر شد!', ok: true });
+        const parts = [];
+        if (data.data?.telegram?.sent) parts.push('تلگرام');
+        if (data.data?.wordpress?.published) parts.push('وردپرس');
+        const targetStr = parts.length > 0 ? parts.join(' و ') : 'سایت و تلگرام';
+        setPublishFeedback({ id, message: `✅ با موفقیت در ${targetStr} منتشر شد!`, ok: true });
         onRefresh();
       } else {
         setPublishFeedback({ id, message: `❌ خطا در انتشار: ${data.error || 'پاسخ ناموفق'}`, ok: false });

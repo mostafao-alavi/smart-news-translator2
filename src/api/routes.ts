@@ -1982,24 +1982,52 @@ api.post('/telegram/send/:articleId', async (c) => {
   const env = c.env;
 
   try {
-    // 1. خواندن مقاله از DB اولیه
-    const article = await env.DB.prepare(
-      'SELECT * FROM articles WHERE id = ?'
-    ).bind(articleId).first<any>();
+    let body: any = {};
+    try {
+      body = await c.req.json();
+    } catch {}
+
+    // 1. خواندن مقاله از DB
+    let article: any = null;
+    if (env.DB) {
+      try {
+        article = await env.DB.prepare('SELECT * FROM articles WHERE id = ?').bind(articleId).first<any>();
+      } catch {}
+    }
+    if (!article && env.DB_ARCHIVE) {
+      try {
+        article = await env.DB_ARCHIVE.prepare('SELECT * FROM articles WHERE id = ?').bind(articleId).first<any>();
+      } catch {}
+    }
 
     if (!article) {
       return c.json({ success: false, data: null, error: 'مقاله پیدا نشد' }, 404);
     }
 
-    // 2. خواندن ترجمه از DB اصلی یا DB_ARCHIVE یا تاریخچه
+    const hasPersian = (str: string) => /[\u0600-\u06FF]/.test(str || '');
+
+    // 2. استخراج یا ساخت ترجمه
     let translation: any = null;
-    if (env.DB) {
+
+    if (body.translated_title || body.translated_content) {
+      translation = {
+        id: Number(articleId),
+        article_id: Number(articleId),
+        translated_title: (body.translated_title || '').trim() || article.title,
+        translated_content: (body.translated_content || '').trim() || article.content,
+        translated_summary: body.translated_summary || '',
+        tags: body.tags || null,
+      };
+    }
+
+    if (!translation && env.DB) {
       try {
         translation = await env.DB.prepare(
           'SELECT * FROM translations WHERE article_id = ? ORDER BY id DESC LIMIT 1'
         ).bind(articleId).first<any>();
       } catch {}
     }
+
     if (!translation && env.DB_ARCHIVE) {
       try {
         translation = await env.DB_ARCHIVE.prepare(
@@ -2007,15 +2035,83 @@ api.post('/telegram/send/:articleId', async (c) => {
         ).bind(articleId).first<any>();
       } catch {}
     }
-    if (!translation && (article.translated_title || article.translated_content)) {
+
+    if (!translation && env.DB) {
+      try {
+        const historyRow = await env.DB.prepare(
+          'SELECT * FROM translation_history WHERE article_id = ? ORDER BY id DESC LIMIT 1'
+        ).bind(articleId).first<any>();
+        if (historyRow) {
+          translation = {
+            id: historyRow.id,
+            article_id: historyRow.article_id,
+            translated_title: historyRow.translated_title,
+            translated_content: historyRow.translated_content,
+            translated_summary: historyRow.translated_summary || '',
+            tags: historyRow.tags || null,
+          };
+        }
+      } catch {}
+    }
+
+    if (!translation && (hasPersian(article.title) || hasPersian(article.content) || article.translated_title || article.translated_content)) {
       translation = {
         id: article.id,
         article_id: article.id,
         translated_title: article.translated_title || article.title,
-        translated_content: article.translated_content || article.content,
+        translated_content: article.translated_content || article.content || article.summary || article.title,
         translated_summary: article.summary || '',
         tags: null,
       };
+    }
+
+    // اگر ترجمه‌ای وجود نداشت، ترجمه خودکار فوری با AI
+    if (!translation || (!translation.translated_title && !translation.translated_content)) {
+      try {
+        const { translateTextWithAI, generateSeoMetadataWithAI } = await import('../cron/translator');
+        const [titleRes, contentRes] = await Promise.all([
+          translateTextWithAI(env, article.title, 'english', 'persian'),
+          translateTextWithAI(env, article.content || article.summary || article.title, 'english', 'persian'),
+        ]);
+
+        const finalTitle = titleRes.translatedText || article.title;
+        const finalContent = contentRes.translatedText || article.content || article.title;
+        const modelUsed = titleRes.modelUsed || contentRes.modelUsed || 'gemini-2.5-flash';
+
+        const seoRes = await generateSeoMetadataWithAI(env, finalTitle, finalContent, modelUsed);
+        const tagsJson = JSON.stringify(seoRes.tags);
+
+        translation = {
+          id: Number(articleId),
+          article_id: Number(articleId),
+          translated_title: finalTitle,
+          translated_content: finalContent,
+          translated_summary: seoRes.meta_description || '',
+          tags: tagsJson,
+        };
+
+        if (env.DB) {
+          try {
+            await env.DB.prepare(`
+              INSERT INTO translations (
+                article_id, target_language, translated_title, translated_content, 
+                suggested_titles, tags, meta_description, translated_at, model_used, approval_status
+              ) VALUES (?, 'persian', ?, ?, ?, ?, ?, datetime('now'), ?, 'approved')
+            `).bind(
+              articleId,
+              finalTitle,
+              finalContent,
+              JSON.stringify(seoRes.suggested_titles),
+              tagsJson,
+              seoRes.meta_description,
+              modelUsed
+            ).run();
+            await env.DB.prepare("UPDATE articles SET translation_status = 'completed' WHERE id = ?").bind(articleId).run();
+          } catch {}
+        }
+      } catch (err: any) {
+        console.warn('Auto translation fallback error in telegram send:', err.message);
+      }
     }
 
     if (!translation) {
@@ -2078,7 +2174,7 @@ api.post('/telegram/send/:articleId', async (c) => {
 api.post('/wp-sync', async (c) => {
   const env = c.env;
   try {
-    let body: { article_id?: number; id?: number; limit?: number } = {};
+    let body: any = {};
     try {
       body = await c.req.json();
     } catch {}
@@ -2087,17 +2183,39 @@ api.post('/wp-sync', async (c) => {
 
     if (articleId) {
       // 1. خواندن مقاله
-      const article = await env.DB.prepare(
-        'SELECT * FROM articles WHERE id = ?'
-      ).bind(articleId).first<any>();
+      let article: any = null;
+      if (env.DB) {
+        try {
+          article = await env.DB.prepare('SELECT * FROM articles WHERE id = ?').bind(articleId).first<any>();
+        } catch {}
+      }
+      if (!article && env.DB_ARCHIVE) {
+        try {
+          article = await env.DB_ARCHIVE.prepare('SELECT * FROM articles WHERE id = ?').bind(articleId).first<any>();
+        } catch {}
+      }
 
       if (!article) {
         return c.json({ success: false, data: null, error: 'مقاله پیدا نشد' }, 404);
       }
 
-      // 2. خواندن ترجمه با جستجوی مطمئن در دیتابیس
+      const hasPersian = (str: string) => /[\u0600-\u06FF]/.test(str || '');
+
+      // 2. خواندن یا استخراج ترجمه
       let translation: any = null;
-      if (env.DB) {
+
+      if (body.translated_title || body.translated_content) {
+        translation = {
+          id: Number(articleId),
+          article_id: Number(articleId),
+          translated_title: (body.translated_title || '').trim() || article.title,
+          translated_content: (body.translated_content || '').trim() || article.content,
+          translated_summary: body.translated_summary || '',
+          tags: body.tags || null,
+        };
+      }
+
+      if (!translation && env.DB) {
         try {
           translation = await env.DB.prepare(
             'SELECT * FROM translations WHERE article_id = ? ORDER BY id DESC LIMIT 1'
@@ -2111,15 +2229,64 @@ api.post('/wp-sync', async (c) => {
           ).bind(articleId).first<any>();
         } catch {}
       }
-      if (!translation && (article.translated_title || article.translated_content)) {
+      if (!translation && (hasPersian(article.title) || hasPersian(article.content) || article.translated_title || article.translated_content)) {
         translation = {
           id: article.id,
           article_id: article.id,
           translated_title: article.translated_title || article.title,
-          translated_content: article.translated_content || article.content,
+          translated_content: article.translated_content || article.content || article.summary || article.title,
           translated_summary: article.summary || '',
           tags: null,
         };
+      }
+
+      // ترجمه خودکار در صورت نیاز
+      if (!translation || (!translation.translated_title && !translation.translated_content)) {
+        try {
+          const { translateTextWithAI, generateSeoMetadataWithAI } = await import('../cron/translator');
+          const [titleRes, contentRes] = await Promise.all([
+            translateTextWithAI(env, article.title, 'english', 'persian'),
+            translateTextWithAI(env, article.content || article.summary || article.title, 'english', 'persian'),
+          ]);
+
+          const finalTitle = titleRes.translatedText || article.title;
+          const finalContent = contentRes.translatedText || article.content || article.title;
+          const modelUsed = titleRes.modelUsed || contentRes.modelUsed || 'gemini-2.5-flash';
+
+          const seoRes = await generateSeoMetadataWithAI(env, finalTitle, finalContent, modelUsed);
+          const tagsJson = JSON.stringify(seoRes.tags);
+
+          translation = {
+            id: Number(articleId),
+            article_id: Number(articleId),
+            translated_title: finalTitle,
+            translated_content: finalContent,
+            translated_summary: seoRes.meta_description || '',
+            tags: tagsJson,
+          };
+
+          if (env.DB) {
+            try {
+              await env.DB.prepare(`
+                INSERT INTO translations (
+                  article_id, target_language, translated_title, translated_content, 
+                  suggested_titles, tags, meta_description, translated_at, model_used, approval_status
+                ) VALUES (?, 'persian', ?, ?, ?, ?, ?, datetime('now'), ?, 'approved')
+              `).bind(
+                articleId,
+                finalTitle,
+                finalContent,
+                JSON.stringify(seoRes.suggested_titles),
+                tagsJson,
+                seoRes.meta_description,
+                modelUsed
+              ).run();
+              await env.DB.prepare("UPDATE articles SET translation_status = 'completed' WHERE id = ?").bind(articleId).run();
+            } catch {}
+          }
+        } catch (err: any) {
+          console.warn('Auto translation fallback error in wp-sync:', err.message);
+        }
       }
 
       if (!translation) {
@@ -2178,7 +2345,13 @@ api.post('/news/:id/distribute', async (c) => {
   const env = c.env;
 
   try {
-    let body: { platforms?: string[] } = {};
+    let body: {
+      platforms?: string[];
+      translated_title?: string;
+      translated_content?: string;
+      translated_summary?: string;
+      tags?: string[] | string;
+    } = {};
     try {
       body = await c.req.json();
     } catch {}
@@ -2187,20 +2360,71 @@ api.post('/news/:id/distribute', async (c) => {
       ? body.platforms.map(p => p.toLowerCase().trim())
       : ['telegram', 'wordpress'];
 
-    // 1. خواندن اطلاعات مقاله
-    const article = await env.DB.prepare(
-      'SELECT * FROM articles WHERE id = ?'
-    ).bind(articleId).first<any>();
+    // 1. خواندن اطلاعات مقاله از DB یا DB_ARCHIVE
+    let article: any = null;
+    if (env.DB) {
+      try {
+        article = await env.DB.prepare('SELECT * FROM articles WHERE id = ?').bind(articleId).first<any>();
+      } catch {}
+    }
+    if (!article && env.DB_ARCHIVE) {
+      try {
+        article = await env.DB_ARCHIVE.prepare('SELECT * FROM articles WHERE id = ?').bind(articleId).first<any>();
+      } catch {}
+    }
 
     if (!article) {
       return c.json({ success: false, data: null, error: 'مقاله پیدا نشد' }, 404);
     }
 
-    // 2. خواندن ترجمه تاییدشده/موجود با جستجوی چند لایه در DB و DB_ARCHIVE و translation_history
+    const hasPersian = (str: string) => /[\u0600-\u06FF]/.test(str || '');
+
+    // 2. خواندن ترجمه تاییدشده/موجود با جستجوی چند لایه
     let translation: any = null;
 
-    // A. بررسی DB اصلی (کامل‌ترین منبع با فیلدهای ترجمه)
-    if (env.DB) {
+    // A. اگر متن ترجمه از پنل Content Desk در درخواست ارسال شده باشد
+    if (body.translated_title || body.translated_content) {
+      const bTitle = (body.translated_title || '').trim();
+      const bContent = (body.translated_content || '').trim();
+      if (bTitle || bContent) {
+        translation = {
+          id: Number(articleId),
+          article_id: Number(articleId),
+          translated_title: bTitle || article.title,
+          translated_content: bContent || bTitle,
+          translated_summary: body.translated_summary || '',
+          tags: body.tags || null,
+        };
+
+        // ذخیره/به‌روزرسانی در دیتابیس
+        if (env.DB) {
+          try {
+            await env.DB.prepare(`
+              INSERT INTO translations (
+                article_id, target_language, translated_title, translated_content, 
+                translated_summary, tags, translated_at, model_used, approval_status
+              ) VALUES (?, 'persian', ?, ?, ?, ?, datetime('now'), 'editor_desk', 'approved')
+            `).bind(
+              articleId,
+              translation.translated_title,
+              translation.translated_content,
+              translation.translated_summary || null,
+              typeof translation.tags === 'string' ? translation.tags : JSON.stringify(translation.tags || []),
+            ).run();
+          } catch {
+            try {
+              await env.DB.prepare(`
+                INSERT INTO translations (article_id, translated_title, translated_content, translated_at)
+                VALUES (?, ?, ?, datetime('now'))
+              `).bind(articleId, translation.translated_title, translation.translated_content).run();
+            } catch {}
+          }
+        }
+      }
+    }
+
+    // B. بررسی DB اصلی
+    if (!translation && env.DB) {
       try {
         translation = await env.DB.prepare(
           'SELECT * FROM translations WHERE article_id = ? ORDER BY id DESC LIMIT 1'
@@ -2208,7 +2432,7 @@ api.post('/news/:id/distribute', async (c) => {
       } catch {}
     }
 
-    // B. در صورت عدم وجود، بررسی DB_ARCHIVE
+    // C. بررسی DB_ARCHIVE
     if (!translation && env.DB_ARCHIVE) {
       try {
         translation = await env.DB_ARCHIVE.prepare(
@@ -2217,7 +2441,7 @@ api.post('/news/:id/distribute', async (c) => {
       } catch {}
     }
 
-    // C. بررسی جدول تاریخچه ترجمه در صورت عدم یافتن
+    // D. بررسی جدول تاریخچه ترجمه
     if (!translation && env.DB) {
       try {
         const historyRow = await env.DB.prepare(
@@ -2237,20 +2461,70 @@ api.post('/news/:id/distribute', async (c) => {
       } catch {}
     }
 
-    // D. در صورتی که خبر قبلاً ترجمه شده اما رکورد جداگانه‌ای در جدول translations ثبت نشده
-    if (!translation && (article.translated_title || article.translated_content)) {
+    // E. بررسی اگر خود عنوان یا متن خبر فارسی است
+    if (!translation && (hasPersian(article.title) || hasPersian(article.content) || hasPersian(article.summary) || article.translated_title || article.translated_content)) {
       translation = {
         id: article.id,
         article_id: article.id,
         translated_title: article.translated_title || article.title,
-        translated_content: article.translated_content || article.content,
+        translated_content: article.translated_content || article.content || article.summary || article.title,
         translated_summary: article.summary || '',
         tags: null,
       };
     }
 
+    // F. ترجمه فوری خودکار در صورت عدم وجود هرگونه ترجمه قبلی
     if (!translation || (!translation.translated_title && !translation.translated_content)) {
-      return c.json({ success: false, data: null, error: 'ترجمه آماده‌ای برای این خبر ثبت نشده است. لطفاً ابتدا عملیات ترجمه را اجرا کنید.' }, 404);
+      try {
+        const { translateTextWithAI, generateSeoMetadataWithAI } = await import('../cron/translator');
+        const [titleRes, contentRes] = await Promise.all([
+          translateTextWithAI(env, article.title, 'english', 'persian'),
+          translateTextWithAI(env, article.content || article.summary || article.title, 'english', 'persian'),
+        ]);
+
+        const finalTitle = titleRes.translatedText || article.title;
+        const finalContent = contentRes.translatedText || article.content || article.title;
+        const modelUsed = titleRes.modelUsed || contentRes.modelUsed || 'gemini-2.5-flash';
+
+        const seoRes = await generateSeoMetadataWithAI(env, finalTitle, finalContent, modelUsed);
+        const titlesJson = JSON.stringify(seoRes.suggested_titles);
+        const tagsJson = JSON.stringify(seoRes.tags);
+
+        translation = {
+          id: Number(articleId),
+          article_id: Number(articleId),
+          translated_title: finalTitle,
+          translated_content: finalContent,
+          translated_summary: seoRes.meta_description || '',
+          tags: tagsJson,
+        };
+
+        if (env.DB) {
+          try {
+            await env.DB.prepare(`
+              INSERT INTO translations (
+                article_id, target_language, translated_title, translated_content, 
+                suggested_titles, tags, meta_description, translated_at, model_used, approval_status
+              ) VALUES (?, 'persian', ?, ?, ?, ?, ?, datetime('now'), ?, 'approved')
+            `).bind(
+              articleId,
+              finalTitle,
+              finalContent,
+              titlesJson,
+              tagsJson,
+              seoRes.meta_description,
+              modelUsed
+            ).run();
+            await env.DB.prepare("UPDATE articles SET translation_status = 'completed' WHERE id = ?").bind(articleId).run();
+          } catch {}
+        }
+      } catch (autoErr: any) {
+        console.warn('Auto translation fallback error in distribute:', autoErr.message);
+      }
+    }
+
+    if (!translation || (!translation.translated_title && !translation.translated_content)) {
+      return c.json({ success: false, data: null, error: 'ترجمه آماده‌ای برای این خبر یافت نشد.' }, 400);
     }
 
     const responseData: {
