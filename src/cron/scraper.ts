@@ -65,6 +65,7 @@ export function parseRssXml(xmlText: string) {
     publishedAt: string;
     featuredImage: string | null;
     externalId?: string;
+    category?: string;
   }> = [];
 
   const itemMatches = xmlText.match(/<(?:item|entry)[\s\S]*?<\/(?:item|entry)>/gi) || [];
@@ -76,7 +77,7 @@ export function parseRssXml(xmlText: string) {
       const rawTitle = titleMatch ? (titleMatch[1] || titleMatch[2] || '') : '';
       const title = cleanText(rawTitle);
 
-      // Extract link
+      // Extract link & clean tracking parameters
       let link = '';
       const linkMatch = itemXml.match(/<link[^>]*>(?:<!\[CDATA\[([\s\S]*?)\]\]>|([\s\S]*?))<\/link>/i);
       if (linkMatch) {
@@ -88,9 +89,32 @@ export function parseRssXml(xmlText: string) {
         }
       }
 
+      // Extract Category / Tag
+      const catMatch = itemXml.match(/<category[^>]*>(?:<!\[CDATA\[([\s\S]*?)\]\]>|([\s\S]*?))<\/category>/i);
+      const rawCategory = catMatch ? (catMatch[1] || catMatch[2] || '').trim() : '';
+
+      // Normalize link (remove tracking params like utm_source)
+      if (link) {
+        try {
+          const urlObj = new URL(link);
+          urlObj.search = '';
+          urlObj.hash = '';
+          link = urlObj.toString();
+        } catch {}
+      }
+
       // Extract GUID / externalId
       const guidMatch = itemXml.match(/<guid[^>]*>(?:<!\[CDATA\[([\s\S]*?)\]\]>|([\s\S]*?))<\/guid>/i);
-      const externalId = guidMatch ? (guidMatch[1] || guidMatch[2] || '').trim() : undefined;
+      const rawGuid = guidMatch ? (guidMatch[1] || guidMatch[2] || '').trim() : undefined;
+      let externalId = rawGuid;
+      if (externalId && externalId.startsWith('http')) {
+        try {
+          const gUrl = new URL(externalId);
+          gUrl.search = '';
+          gUrl.hash = '';
+          externalId = gUrl.toString();
+        } catch {}
+      }
 
       // Extract description / summary
       const descMatch = itemXml.match(/<(?:description|summary|content:encoded)[^>]*>(?:<!\[CDATA\[([\s\S]*?)\]\]>|([\s\S]*?))<\/(?:description|summary|content:encoded)>/i);
@@ -126,7 +150,8 @@ export function parseRssXml(xmlText: string) {
           summary: summary || title,
           publishedAt,
           featuredImage,
-          externalId,
+          externalId: externalId || link,
+          category: rawCategory,
         });
       }
     } catch {
@@ -138,9 +163,9 @@ export function parseRssXml(xmlText: string) {
 }
 
 /**
- * 1. Scrapes Cointelegraph RSS feed and filters out already scraped articles
+ * 1. Scrapes Cointelegraph RSS feed focusing on Latest News and ingests all available items
  */
-export async function scrapeCointelegraph(env: Env): Promise<Array<{
+export async function scrapeCointelegraph(env: Env, options?: { maxItems?: number }): Promise<Array<{
   source_id: number;
   title: string;
   link: string;
@@ -151,7 +176,8 @@ export async function scrapeCointelegraph(env: Env): Promise<Array<{
   id?: number;
 }>> {
   const rssUrl = 'https://cointelegraph.com/rss';
-  console.log(`[Scraper] Fetching Cointelegraph RSS: ${rssUrl}`);
+  const limit = options?.maxItems || 30;
+  console.log(`[Scraper] Fetching Cointelegraph RSS: ${rssUrl} (Targeting Latest News, max ${limit})`);
 
   try {
     const response = await fetch(rssUrl, {
@@ -159,7 +185,7 @@ export async function scrapeCointelegraph(env: Env): Promise<Array<{
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Hazardastan-RSS/1.0',
         'Accept': 'application/rss+xml, application/xml, text/xml, */*',
       },
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(12000),
     });
 
     if (!response.ok) {
@@ -167,18 +193,29 @@ export async function scrapeCointelegraph(env: Env): Promise<Array<{
     }
 
     const xmlText = await response.text();
-    const items = parseRssXml(xmlText);
-    console.log(`[Scraper] Parsed ${items.length} items from Cointelegraph RSS`);
+    const allItems = parseRssXml(xmlText);
+    console.log(`[Scraper] Parsed ${allItems.length} total items from Cointelegraph RSS`);
 
-    if (items.length === 0) return [];
+    if (allItems.length === 0) return [];
+
+    // Filter strictly for "Latest News" (or /news/ path which corresponds to latest news)
+    const latestNewsItems = allItems.filter(item => {
+      const cat = (item.category || '').toLowerCase().trim();
+      const isLatestCat = cat.includes('latest') || cat === 'latest news' || cat === 'news';
+      const isNewsPath = item.link.includes('/news/');
+      return isLatestCat || isNewsPath || !cat;
+    });
+
+    const itemsToProcess = latestNewsItems.length > 0 ? latestNewsItems : allItems;
+    console.log(`[Scraper] Found ${itemsToProcess.length} "latest-news" items in feed`);
 
     // Check existing in DB Primary
-    const links = items.map(i => i.link);
+    const links = itemsToProcess.map(i => i.link);
     const placeholders = links.map(() => '?').join(',');
 
     let existingLinks = new Set<string>();
 
-    if (env.DB) {
+    if (env.DB && links.length > 0) {
       try {
         const existingRes = await env.DB.prepare(
           `SELECT link FROM articles WHERE link IN (${placeholders})`
@@ -198,7 +235,7 @@ export async function scrapeCointelegraph(env: Env): Promise<Array<{
 
     // Also check KV cache if available
     if (env.CACHE) {
-      for (const item of items) {
+      for (const item of itemsToProcess) {
         try {
           const cached = await env.CACHE.get(`rss_seen:${item.link}`);
           if (cached) existingLinks.add(item.link);
@@ -206,9 +243,9 @@ export async function scrapeCointelegraph(env: Env): Promise<Array<{
       }
     }
 
-    const newArticles = items
+    const newArticles = itemsToProcess
       .filter(item => !existingLinks.has(item.link))
-      .slice(0, 10)
+      .slice(0, limit)
       .map(item => ({
         source_id: 1,
         title: item.title,
@@ -219,7 +256,7 @@ export async function scrapeCointelegraph(env: Env): Promise<Array<{
         external_id: item.externalId || item.link,
       }));
 
-    console.log(`[Scraper] Found ${newArticles.length} brand new articles to process`);
+    console.log(`[Scraper] Found ${newArticles.length} brand new latest-news articles to process`);
     return newArticles;
   } catch (err: any) {
     console.error(`[Scraper] Error fetching Cointelegraph RSS:`, err.message);

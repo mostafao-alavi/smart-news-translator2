@@ -1991,11 +1991,32 @@ api.post('/telegram/send/:articleId', async (c) => {
       return c.json({ success: false, data: null, error: 'مقاله پیدا نشد' }, 404);
     }
 
-    // 2. خواندن ترجمه از DB_ARCHIVE یا DB اصلی
-    const targetDb = env.DB_ARCHIVE || env.DB;
-    const translation = await targetDb.prepare(
-      'SELECT * FROM translations WHERE article_id = ? ORDER BY id DESC LIMIT 1'
-    ).bind(articleId).first<any>();
+    // 2. خواندن ترجمه از DB اصلی یا DB_ARCHIVE یا تاریخچه
+    let translation: any = null;
+    if (env.DB) {
+      try {
+        translation = await env.DB.prepare(
+          'SELECT * FROM translations WHERE article_id = ? ORDER BY id DESC LIMIT 1'
+        ).bind(articleId).first<any>();
+      } catch {}
+    }
+    if (!translation && env.DB_ARCHIVE) {
+      try {
+        translation = await env.DB_ARCHIVE.prepare(
+          'SELECT * FROM translations WHERE article_id = ? ORDER BY id DESC LIMIT 1'
+        ).bind(articleId).first<any>();
+      } catch {}
+    }
+    if (!translation && (article.translated_title || article.translated_content)) {
+      translation = {
+        id: article.id,
+        article_id: article.id,
+        translated_title: article.translated_title || article.title,
+        translated_content: article.translated_content || article.content,
+        translated_summary: article.summary || '',
+        tags: null,
+      };
+    }
 
     if (!translation) {
       return c.json({ success: false, data: null, error: 'ترجمه برای این مقاله پیدا نشد' }, 404);
@@ -2074,11 +2095,32 @@ api.post('/wp-sync', async (c) => {
         return c.json({ success: false, data: null, error: 'مقاله پیدا نشد' }, 404);
       }
 
-      // 2. خواندن ترجمه
-      const targetDb = env.DB_ARCHIVE || env.DB;
-      const translation = await targetDb.prepare(
-        'SELECT * FROM translations WHERE article_id = ? ORDER BY id DESC LIMIT 1'
-      ).bind(articleId).first<any>();
+      // 2. خواندن ترجمه با جستجوی مطمئن در دیتابیس
+      let translation: any = null;
+      if (env.DB) {
+        try {
+          translation = await env.DB.prepare(
+            'SELECT * FROM translations WHERE article_id = ? ORDER BY id DESC LIMIT 1'
+          ).bind(articleId).first<any>();
+        } catch {}
+      }
+      if (!translation && env.DB_ARCHIVE) {
+        try {
+          translation = await env.DB_ARCHIVE.prepare(
+            'SELECT * FROM translations WHERE article_id = ? ORDER BY id DESC LIMIT 1'
+          ).bind(articleId).first<any>();
+        } catch {}
+      }
+      if (!translation && (article.translated_title || article.translated_content)) {
+        translation = {
+          id: article.id,
+          article_id: article.id,
+          translated_title: article.translated_title || article.title,
+          translated_content: article.translated_content || article.content,
+          translated_summary: article.summary || '',
+          tags: null,
+        };
+      }
 
       if (!translation) {
         return c.json({ success: false, data: null, error: 'ترجمه برای این مقاله پیدا نشد' }, 404);
@@ -2154,13 +2196,60 @@ api.post('/news/:id/distribute', async (c) => {
       return c.json({ success: false, data: null, error: 'مقاله پیدا نشد' }, 404);
     }
 
-    // 2. خواندن ترجمه تاییدشده/موجود
-    const targetDb = env.DB_ARCHIVE || env.DB;
-    const translation = await targetDb.prepare(
-      'SELECT * FROM translations WHERE article_id = ? ORDER BY id DESC LIMIT 1'
-    ).bind(articleId).first<any>();
+    // 2. خواندن ترجمه تاییدشده/موجود با جستجوی چند لایه در DB و DB_ARCHIVE و translation_history
+    let translation: any = null;
 
-    if (!translation) {
+    // A. بررسی DB اصلی (کامل‌ترین منبع با فیلدهای ترجمه)
+    if (env.DB) {
+      try {
+        translation = await env.DB.prepare(
+          'SELECT * FROM translations WHERE article_id = ? ORDER BY id DESC LIMIT 1'
+        ).bind(articleId).first<any>();
+      } catch {}
+    }
+
+    // B. در صورت عدم وجود، بررسی DB_ARCHIVE
+    if (!translation && env.DB_ARCHIVE) {
+      try {
+        translation = await env.DB_ARCHIVE.prepare(
+          'SELECT * FROM translations WHERE article_id = ? ORDER BY id DESC LIMIT 1'
+        ).bind(articleId).first<any>();
+      } catch {}
+    }
+
+    // C. بررسی جدول تاریخچه ترجمه در صورت عدم یافتن
+    if (!translation && env.DB) {
+      try {
+        const historyRow = await env.DB.prepare(
+          'SELECT * FROM translation_history WHERE article_id = ? ORDER BY id DESC LIMIT 1'
+        ).bind(articleId).first<any>();
+
+        if (historyRow) {
+          translation = {
+            id: historyRow.id,
+            article_id: historyRow.article_id,
+            translated_title: historyRow.translated_title,
+            translated_content: historyRow.translated_content,
+            translated_summary: historyRow.translated_summary || '',
+            tags: historyRow.tags || null,
+          };
+        }
+      } catch {}
+    }
+
+    // D. در صورتی که خبر قبلاً ترجمه شده اما رکورد جداگانه‌ای در جدول translations ثبت نشده
+    if (!translation && (article.translated_title || article.translated_content)) {
+      translation = {
+        id: article.id,
+        article_id: article.id,
+        translated_title: article.translated_title || article.title,
+        translated_content: article.translated_content || article.content,
+        translated_summary: article.summary || '',
+        tags: null,
+      };
+    }
+
+    if (!translation || (!translation.translated_title && !translation.translated_content)) {
       return c.json({ success: false, data: null, error: 'ترجمه آماده‌ای برای این خبر ثبت نشده است. لطفاً ابتدا عملیات ترجمه را اجرا کنید.' }, 404);
     }
 
