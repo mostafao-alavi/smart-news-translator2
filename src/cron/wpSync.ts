@@ -1,4 +1,5 @@
 import { Env } from '../types.ts';
+import { getSecret } from '../utils/secrets.ts';
 
 export interface WpSyncResult {
   processed: number;
@@ -209,15 +210,15 @@ export async function distributeToWordPress(
     featured_image?: string | null;
   }
 ): Promise<{ ok: boolean; postId?: string; postUrl?: string; error?: string }> {
-  const apiUrl = (env.WP_API_URL || 'https://updaaate.ir/wp-json/wp/v2/').trim();
-  const username = (env.WP_USERNAME || '1000dastan').trim();
-  const password = (env.WP_APPLICATION_PASSWORD || '').trim();
-  const status = env.WP_POST_STATUS || 'publish';
-  const categoryId = Number(env.WP_CATEGORY_ID) || 3;
+  const apiUrl = (await getSecret(env, 'WP_API_URL', 'https://updaaate.ir/wp-json/wp/v2/')).trim();
+  const username = (await getSecret(env, 'WP_USERNAME', '1000dastan')).trim();
+  const password = (await getSecret(env, 'WP_APPLICATION_PASSWORD', '')).trim();
+  const status = (await getSecret(env, 'WP_POST_STATUS', 'publish')).trim();
+  const categoryId = Number(await getSecret(env, 'WP_CATEGORY_ID', '3')) || 3;
 
   if (!username || !password) {
-    console.warn('[WordPress] Skipping live publish: WP_USERNAME or WP_APPLICATION_PASSWORD not set');
-    return { ok: false, error: 'اطلاعات احراز هویت وردپرس (WP_USERNAME یا WP_APPLICATION_PASSWORD) تنظیم نشده است.' };
+    console.warn('[WordPress] Skipping live publish: WP_USERNAME or WP_APPLICATION_PASSWORD not set in Cloudflare Secrets Store / Env');
+    return { ok: false, error: 'اطلاعات احراز هویت وردپرس (WP_USERNAME یا WP_APPLICATION_PASSWORD) در Cloudflare Secrets Store یا متغیرهای محیطی تنظیم نشده است.' };
   }
 
   const postsEndpoint = normalizeWpApiEndpoint(apiUrl, 'posts');

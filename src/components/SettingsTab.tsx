@@ -28,7 +28,9 @@ import {
   Download,
   Filter,
   Radio,
-  Layers
+  Layers,
+  ShieldCheck,
+  Key
 } from 'lucide-react';
 import { WorkerFileInfo, ExecutionLogItem, SystemEventItem } from '../types/client';
 
@@ -160,11 +162,50 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [fileContent, setFileContent] = useState<string>('');
   const [loadingCode, setLoadingCode] = useState<boolean>(false);
 
+  // Cloudflare Secrets Store State
+  const [secretsStatus, setSecretsStatus] = useState<any>(null);
+  const [syncingSecrets, setSyncingSecrets] = useState<boolean>(false);
+  const [secretsSyncMessage, setSecretsSyncMessage] = useState<string | null>(null);
+
   useEffect(() => {
     if (autoScrollLogs && consoleEndRef.current) {
       consoleEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [logs, autoScrollLogs]);
+
+  const fetchSecretsStatus = async () => {
+    try {
+      const res = await fetch('/api/secrets/status');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success && json.data) {
+          setSecretsStatus(json.data);
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching secrets status:', e);
+    }
+  };
+
+  const handleSyncSecrets = async () => {
+    setSyncingSecrets(true);
+    setSecretsSyncMessage(null);
+    try {
+      const res = await fetch('/api/secrets/sync', { method: 'POST' });
+      const json = await res.json();
+      if (json.success) {
+        setSecretsStatus(json.data.status);
+        setSecretsSyncMessage(json.data.message || 'کلیدها از Secrets Store با موفقیت همگام شدند.');
+        setTimeout(() => setSecretsSyncMessage(null), 5000);
+      } else {
+        setSecretsSyncMessage('خطا: ' + (json.error || 'ناشناخته'));
+      }
+    } catch (e: any) {
+      setSecretsSyncMessage('خطا در ارتباط با سرور: ' + e.message);
+    } finally {
+      setSyncingSecrets(false);
+    }
+  };
 
   const fetchD1Logs = async () => {
     setLoadingLogs(true);
@@ -189,6 +230,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
 
   useEffect(() => {
     fetchD1Logs();
+    fetchSecretsStatus();
   }, []);
 
   const handleClearD1Logs = async () => {
@@ -546,6 +588,118 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 <Trash2 className={`w-3.5 h-3.5 text-emerald-600 ${isPruning ? 'animate-spin' : ''}`} />
                 <span>{isPruning ? 'در حال پاکسازی...' : 'اجرای پاکسازی D1'}</span>
               </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Cloudflare Secrets Store & Environment Security Panel */}
+        <div className="bg-slate-900 text-white rounded-xl p-5 shadow-xs space-y-4 mt-4 border border-slate-800">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-3">
+              <div className="bg-amber-500/20 text-amber-400 p-2.5 rounded-xl border border-amber-500/30">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <span>مدیریت و تزریق خودکار سکرت‌ها (Cloudflare Secrets Store)</span>
+                  <span className="bg-amber-500/20 text-amber-300 text-xs px-2.5 py-0.5 rounded-full font-mono font-medium border border-amber-500/30">
+                    store_id: {secretsStatus?.secretsStoreBinding || 'MY_SEC_STORE'}
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  کلیدهای محرمانه ذخیره‌شده در کلادفلر (وردپرس، تلگرام، جمینای) به صورت هوشمند بر اساس شناسه Store بارگذاری و جای‌گذاری می‌شوند.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleSyncSecrets}
+              disabled={syncingSecrets}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs px-3.5 py-2 rounded-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 shrink-0"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${syncingSecrets ? 'animate-spin' : ''}`} />
+              <span>{syncingSecrets ? 'در حال بازخوانی سکرت‌ها...' : 'همگام‌سازی و خواندن سکرت‌ها'}</span>
+            </button>
+          </div>
+
+          {secretsSyncMessage && (
+            <div className="bg-emerald-950/80 border border-emerald-800 text-emerald-300 text-xs rounded-lg p-3 flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{secretsSyncMessage}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+            {/* Telegram Bot Token */}
+            <div className="bg-slate-800/80 border border-slate-700/80 rounded-lg p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-mono text-slate-400">TELEGRAM_BOT_TOKEN</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                  secretsStatus?.secrets?.TELEGRAM_BOT_TOKEN?.isSet
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                }`}>
+                  {secretsStatus?.secrets?.TELEGRAM_BOT_TOKEN?.isSet ? 'تنظیم شده ✓' : 'تنظیم نشده'}
+                </span>
+              </div>
+              <div className="text-xs font-mono text-slate-300 truncate dir-ltr text-left">
+                {secretsStatus?.secrets?.TELEGRAM_BOT_TOKEN?.maskedValue || '—'}
+              </div>
+              <div className="text-[10px] text-slate-500">منبع: {secretsStatus?.secrets?.TELEGRAM_BOT_TOKEN?.source || 'none'}</div>
+            </div>
+
+            {/* Telegram Chat ID */}
+            <div className="bg-slate-800/80 border border-slate-700/80 rounded-lg p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-mono text-slate-400">TELEGRAM_CHAT_ID</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                  secretsStatus?.secrets?.TELEGRAM_CHAT_ID?.isSet
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                }`}>
+                  {secretsStatus?.secrets?.TELEGRAM_CHAT_ID?.isSet ? 'تنظیم شده ✓' : 'پیش‌فرض'}
+                </span>
+              </div>
+              <div className="text-xs font-mono text-slate-300 truncate dir-ltr text-left">
+                {secretsStatus?.secrets?.TELEGRAM_CHAT_ID?.maskedValue || '@updaaate_crypto'}
+              </div>
+              <div className="text-[10px] text-slate-500">منبع: {secretsStatus?.secrets?.TELEGRAM_CHAT_ID?.source || 'none'}</div>
+            </div>
+
+            {/* WP Application Password */}
+            <div className="bg-slate-800/80 border border-slate-700/80 rounded-lg p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-mono text-slate-400">WP_APPLICATION_PASSWORD</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                  secretsStatus?.secrets?.WP_APPLICATION_PASSWORD?.isSet
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                }`}>
+                  {secretsStatus?.secrets?.WP_APPLICATION_PASSWORD?.isSet ? 'تنظیم شده ✓' : 'تنظیم نشده'}
+                </span>
+              </div>
+              <div className="text-xs font-mono text-slate-300 truncate dir-ltr text-left">
+                {secretsStatus?.secrets?.WP_APPLICATION_PASSWORD?.maskedValue || '—'}
+              </div>
+              <div className="text-[10px] text-slate-500">منبع: {secretsStatus?.secrets?.WP_APPLICATION_PASSWORD?.source || 'none'}</div>
+            </div>
+
+            {/* Gemini API Key */}
+            <div className="bg-slate-800/80 border border-slate-700/80 rounded-lg p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-mono text-slate-400">GEMINI_API_KEY</span>
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${
+                  secretsStatus?.secrets?.GEMINI_API_KEY?.isSet
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                }`}>
+                  {secretsStatus?.secrets?.GEMINI_API_KEY?.isSet ? 'تنظیم شده ✓' : 'اختیاری'}
+                </span>
+              </div>
+              <div className="text-xs font-mono text-slate-300 truncate dir-ltr text-left">
+                {secretsStatus?.secrets?.GEMINI_API_KEY?.maskedValue || '—'}
+              </div>
+              <div className="text-[10px] text-slate-500">منبع: {secretsStatus?.secrets?.GEMINI_API_KEY?.source || 'none'}</div>
             </div>
           </div>
         </div>

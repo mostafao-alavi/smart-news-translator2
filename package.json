@@ -3,15 +3,18 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "packageManager": "bun@1.3.14",
   "engines": {
-    "node": ">=22",
-    "npm": ">=10"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "build:client": "vite build",
-    "deploy": "npm run build && wrangler deploy",
+    "build:worker": "wrangler deploy --dry-run",
+    "cf:install": "bun install --frozen-lockfile",
+    "cf:build": "bun run build:client",
+    "deploy": "bun run build && wrangler deploy",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"

@@ -1,5 +1,6 @@
-import { Env, Article, SeoMetadata } from '../types';
+import { Env, Article, SeoMetadata } from '../types.ts';
 import { GoogleGenAI } from '@google/genai';
+import { getSecret } from '../utils/secrets.ts';
 
 export interface TranslationResult {
   translatedText: string;
@@ -226,7 +227,7 @@ export async function translateTextWithAI(
   }
 
   const truncatedText = text.slice(0, 4000);
-  const apiKey = env.GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined);
+  const apiKey = await getSecret(env, 'GEMINI_API_KEY', '');
   const isGeminiRequested = preferredModel === 'gemini-3.7-flash' || preferredModel === 'gemini-flash-latest' || preferredModel?.startsWith('gemini-') || !preferredModel;
 
   const translationPrompt = `شما یک مترجم ارشد و روزنامه‌نگار حرفه‌ای در حوزه فناوری، بازارهای مالی و ارز دیجیتال برای رسانه معتبر «هزاردستان» هستید.
@@ -323,7 +324,7 @@ export async function generateSeoMetadataWithAI(
   articleContent: string,
   preferredModel?: string
 ): Promise<SeoMetadataResult> {
-  const apiKey = env.GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined);
+  const apiKey = await getSecret(env, 'GEMINI_API_KEY', '');
   const truncatedContent = (articleContent || articleTitle).slice(0, 3000);
 
   const seoPrompt = `شما یک مدیر سئو و سردبیر ارشد دیجیتال برای یک رسانه خبری مطرح (هزاردستان) هستید.

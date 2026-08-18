@@ -1,4 +1,5 @@
-import { Env } from '../types';
+import { Env } from '../types.ts';
+import { getSecret } from '../utils/secrets.ts';
 
 export interface TelegramNewsPayload {
   chatId?: string;
@@ -154,12 +155,12 @@ export async function distributeToTelegram(
     source_url?: string;
   }
 ): Promise<TelegramResponse> {
-  const token = env.TELEGRAM_BOT_TOKEN || (typeof process !== 'undefined' ? process.env.TELEGRAM_BOT_TOKEN : undefined);
-  const chatId = env.TELEGRAM_CHAT_ID || (typeof process !== 'undefined' ? process.env.TELEGRAM_CHAT_ID : undefined) || '@updaaate_crypto';
+  const token = await getSecret(env, 'TELEGRAM_BOT_TOKEN', '');
+  const chatId = await getSecret(env, 'TELEGRAM_CHAT_ID', '@updaaate_crypto');
 
   if (!token) {
-    console.warn('[Telegram] Skipping Telegram publish: TELEGRAM_BOT_TOKEN not set');
-    return { ok: false, description: 'Telegram token not set' };
+    console.warn('[Telegram] Skipping Telegram publish: TELEGRAM_BOT_TOKEN not set in Cloudflare Secrets Store / Env');
+    return { ok: false, description: 'Telegram bot token not set in Secrets Store or Environment' };
   }
 
   const response = await sendNewsToTelegram({

@@ -5,12 +5,20 @@ import { scrapeCointelegraph, scrapeFullArticle, saveArticle, extractFullArticle
 import { translateArticle } from './cron/translator.ts';
 import { distributeToWordPress } from './cron/wpSync.ts';
 import { distributeToTelegram } from './cron/telegramBot.ts';
+import { hydrateEnvWithSecrets } from './utils/secrets.ts';
 import { Env, ApiResponse, ScheduledEvent, ExecutionContext, MessageBatch } from './types.ts';
 
 const app = new Hono<{ Bindings: Env }>();
 
-// Security and Performance Middleware
+// Security, Performance, and Secrets Hydration Middleware
 app.use('*', async (c, next) => {
+  if (c.env) {
+    try {
+      await hydrateEnvWithSecrets(c.env);
+    } catch (e: any) {
+      console.warn('[Secrets Store] Middleware hydration warning:', e?.message || e);
+    }
+  }
   await next();
   c.header('X-Content-Type-Options', 'nosniff');
   c.header('X-Frame-Options', 'SAMEORIGIN');
@@ -64,6 +72,11 @@ export default {
   // Scheduled event handler for Cloudflare Cron Triggers (crons = ["*/15 * * * *"])
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     console.log(`[Cron] 15-Minute trigger executed at ${new Date().toISOString()} (Cron: ${event.cron})`);
+
+    // Ensure secrets are hydrated from Cloudflare Secrets Store
+    try {
+      await hydrateEnvWithSecrets(env);
+    } catch {}
 
     ctx.waitUntil(
       (async () => {
@@ -130,6 +143,11 @@ export default {
   // Queue consumer handler for Cloudflare Queues
   async queue(batch: MessageBatch<any>, env: Env): Promise<void> {
     console.log(`[Queue] Processing ${batch.messages.length} messages for queue: ${batch.queue}`);
+
+    // Ensure secrets are hydrated from Cloudflare Secrets Store
+    try {
+      await hydrateEnvWithSecrets(env);
+    } catch {}
 
     for (const message of batch.messages) {
       try {

@@ -3,15 +3,27 @@ import { cors } from 'hono/cors';
 import { Env, ApiResponse, Source, JoinedArticleNews, StatsData } from '../types.ts';
 import { wpSyncPublisher, testWordPressConnection } from '../cron/wpSync.ts';
 import { testBot, sendNewsToTelegram } from '../cron/telegramBot.ts';
+import { hydrateEnvWithSecrets, getSecretsStatus, getSecret } from '../utils/secrets.ts';
 
 const api = new Hono<{ Bindings: Env }>();
 
-// Enable CORS for all routes
+// Enable CORS and Secrets Hydration for all routes
 api.use('*', cors({
   origin: '*',
   allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowHeaders: ['Content-Type', 'Authorization'],
 }));
+
+api.use('*', async (c, next) => {
+  if (c.env) {
+    try {
+      await hydrateEnvWithSecrets(c.env);
+    } catch (e: any) {
+      console.warn('[Secrets Store] Route hydration notice:', e?.message || e);
+    }
+  }
+  await next();
+});
 
 let tablesEnsured = false;
 export async function ensureTablesAndLogs(db: any, force: boolean = false) {
@@ -2927,5 +2939,33 @@ api.post('/d1/query', async (c) => {
   }
 });
 
+
+// GET /api/secrets/status - View Cloudflare Secrets Store status and loaded keys
+api.get('/secrets/status', async (c) => {
+  try {
+    const status = await getSecretsStatus(c.env);
+    return c.json({ success: true, data: status, error: null }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// POST /api/secrets/sync - Force re-hydrate secrets from Cloudflare Secrets Store
+api.post('/secrets/sync', async (c) => {
+  try {
+    await hydrateEnvWithSecrets(c.env);
+    const status = await getSecretsStatus(c.env);
+    return c.json({
+      success: true,
+      data: {
+        message: 'همگام‌سازی و خواندن سکرت‌ها از Cloudflare Secrets Store با موفقیت انجام شد.',
+        status
+      },
+      error: null
+    }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
 
 export default api;
