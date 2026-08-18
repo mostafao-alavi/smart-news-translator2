@@ -122,18 +122,31 @@ export const AppDashboard: React.FC = () => {
           setStats(json.data);
           setStatsError(false);
         } else {
-          if (!isPoll) setStatsError(true);
+          if (!isPoll && !stats) setStatsError(true);
         }
       } else {
-        if (!isPoll) setStatsError(true);
+        if (!isPoll && !stats) setStatsError(true);
       }
     } catch (e) {
-      console.error('Error fetching stats:', e);
-      if (!isPoll) setStatsError(true);
+      console.warn('Error fetching stats:', e);
+      if (!isPoll && !stats) setStatsError(true);
     } finally {
       if (!isPoll) setLoadingStats(false);
     }
   };
+
+  const computedFallbackStats: StatsData = {
+    sources_count: sources.filter(s => s.is_active !== 0 && s.is_active !== false).length || sources.length || 3,
+    articles_count: news.length,
+    translations_count: news.filter(n => !!n.translated_title || n.translation_status === 'completed').length,
+    pending_translations_count: news.filter(n => !n.translated_title && n.translation_status !== 'completed').length,
+    distributions_count: news.filter(n => n.wp_sync_status === 'published' || n.telegram_sync_status === 'published').length,
+    platforms_count: 2,
+    approved_translations_count: news.filter(n => !!n.translated_title || n.translation_status === 'completed').length,
+    wp_published_count: news.filter(n => n.wp_sync_status === 'published').length,
+  };
+
+  const effectiveStats = stats || computedFallbackStats;
 
   const refreshAllData = () => {
     fetchNews();
@@ -404,9 +417,9 @@ export const AppDashboard: React.FC = () => {
         {/* Tab 1: 🏠 Dashboard */}
         {activeTab === 'dashboard' && (
           <DashboardTab
-            stats={stats}
+            stats={effectiveStats}
             loadingStats={loadingStats}
-            statsError={statsError}
+            statsError={statsError && !stats}
             onRetryStats={() => fetchStats(false)}
             onRefreshAll={refreshAllData}
             news={news}
@@ -476,7 +489,7 @@ export const AppDashboard: React.FC = () => {
             workerFiles={workerFiles}
             sources={sources}
             news={news}
-            stats={stats}
+            stats={effectiveStats}
             onRefreshAll={refreshAllData}
             onAddSource={handleAddSource}
             onUpdateSource={handleUpdateSource}

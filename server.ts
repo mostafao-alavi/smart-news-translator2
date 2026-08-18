@@ -35,7 +35,14 @@ async function startServer() {
 
   // Mount API
   app.use('/api', (req, res, next) => {
-    honoListener(req, res);
+    try {
+      honoListener(req, res);
+    } catch (err: any) {
+      console.error('[API Bridge Error]:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, data: null, error: err?.message || 'API Bridge Error' });
+      }
+    }
   });
 
   // Vite middleware for development
