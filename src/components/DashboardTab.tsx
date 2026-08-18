@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { StatsOverview } from './StatsOverview';
 import { DatabaseErrorFallback } from './DatabaseErrorFallback';
+import { AutopilotMasterSwitch } from './AutopilotMasterSwitch';
 
 interface DashboardTabProps {
   stats: StatsData | null;
@@ -141,6 +142,9 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Master Autonomous Autopilot Switch Panel */}
+      <AutopilotMasterSwitch onRefreshAll={onRefreshAll || onRetryStats} />
+
       {/* Database Error Fallback if stats fail to load */}
       {statsError ? (
         <DatabaseErrorFallback

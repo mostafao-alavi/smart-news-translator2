@@ -21,6 +21,16 @@ api.use('*', async (c, next) => {
     } catch (e: any) {
       console.warn('[Secrets Store] Route hydration notice:', e?.message || e);
     }
+    if (c.env.DB && !tablesEnsured) {
+      try {
+        await ensureTablesAndLogs(c.env.DB);
+        if (c.env.DB_ARCHIVE && c.env.DB_ARCHIVE !== c.env.DB) {
+          await ensureTablesAndLogs(c.env.DB_ARCHIVE);
+        }
+      } catch (e) {
+        console.warn('[D1] Schema initialization notice:', e);
+      }
+    }
   }
   await next();
 });
@@ -114,6 +124,119 @@ export async function ensureTablesAndLogs(db: any, force: boolean = false) {
       `CREATE TABLE IF NOT EXISTS system_metrics (
         key TEXT PRIMARY KEY,
         value INTEGER DEFAULT 0
+      );`,
+      `CREATE TABLE IF NOT EXISTS source_configs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id INTEGER NOT NULL,
+        fetch_frequency_minutes INTEGER DEFAULT 15,
+        rate_limit_rpm INTEGER DEFAULT 60,
+        css_content_selector TEXT,
+        css_title_selector TEXT,
+        css_author_selector TEXT,
+        css_date_selector TEXT,
+        css_cleaning_selectors TEXT,
+        excluded_elements TEXT,
+        custom_headers TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (source_id) REFERENCES sources(id)
+      );`,
+      `CREATE TABLE IF NOT EXISTS crawl_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id INTEGER,
+        status TEXT DEFAULT 'pending',
+        start_time TEXT,
+        end_time TEXT,
+        articles_found INTEGER DEFAULT 0,
+        articles_saved INTEGER DEFAULT 0,
+        error_message TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      );`,
+      `CREATE TABLE IF NOT EXISTS crawl_checkpoints (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id INTEGER NOT NULL UNIQUE,
+        last_crawled_url TEXT,
+        last_crawled_at TEXT,
+        cursor TEXT,
+        updated_at TEXT DEFAULT (datetime('now'))
+      );`,
+      `CREATE TABLE IF NOT EXISTS sitemap_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id INTEGER NOT NULL,
+        url TEXT NOT NULL UNIQUE,
+        last_modified TEXT,
+        status TEXT DEFAULT 'pending',
+        discovered_at TEXT DEFAULT (datetime('now'))
+      );`,
+      `CREATE TABLE IF NOT EXISTS crawl_errors (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_id INTEGER,
+        url TEXT,
+        error_code TEXT,
+        error_message TEXT,
+        occurred_at TEXT DEFAULT (datetime('now'))
+      );`,
+      `CREATE TABLE IF NOT EXISTS article_contents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        article_id INTEGER NOT NULL UNIQUE,
+        full_text TEXT NOT NULL,
+        html_content TEXT,
+        author TEXT,
+        scraped_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (article_id) REFERENCES articles(id)
+      );`,
+      `CREATE TABLE IF NOT EXISTS article_blocks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        article_id INTEGER NOT NULL,
+        block_type TEXT NOT NULL,
+        content TEXT NOT NULL,
+        position INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (article_id) REFERENCES articles(id)
+      );`,
+      `CREATE TABLE IF NOT EXISTS article_images (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        article_id INTEGER NOT NULL,
+        image_url TEXT NOT NULL,
+        role TEXT DEFAULT 'inline',
+        position INTEGER DEFAULT 0,
+        alt_text TEXT,
+        image_alt TEXT,
+        title TEXT,
+        caption TEXT,
+        description TEXT,
+        dimensions TEXT,
+        is_featured INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (article_id) REFERENCES articles(id)
+      );`,
+      `CREATE TABLE IF NOT EXISTS tags (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        slug TEXT NOT NULL UNIQUE,
+        created_at TEXT DEFAULT (datetime('now'))
+      );`,
+      `CREATE TABLE IF NOT EXISTS article_tags (
+        article_id INTEGER NOT NULL,
+        tag_id INTEGER NOT NULL,
+        PRIMARY KEY (article_id, tag_id),
+        FOREIGN KEY (article_id) REFERENCES articles(id),
+        FOREIGN KEY (tag_id) REFERENCES tags(id)
+      );`,
+      `CREATE TABLE IF NOT EXISTS backup_destinations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        destination_type TEXT DEFAULT 'google_sheets',
+        config_json TEXT,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now'))
+      );`,
+      `CREATE TABLE IF NOT EXISTS backup_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        destination_id INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        records_backed_up INTEGER DEFAULT 0,
+        error_message TEXT,
+        run_at TEXT DEFAULT (datetime('now'))
       );`
     ];
 
@@ -3014,25 +3137,77 @@ api.post('/database/reset', async (c) => {
 });
 
 
-// POST /api/d1/query - Execute raw SQL query
+// GET /api/d1/status - Comprehensive D1 Primary & Archive Database Connection Test
+api.get('/d1/status', async (c) => {
+  try {
+    const { getD1StatusReport } = await import('../utils/d1');
+    const report = await getD1StatusReport(c.env);
+    return c.json({ success: true, data: report, error: null }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// POST /api/d1/sync-schema - Initialize or verify all core tables and indexes on D1
+api.post('/d1/sync-schema', async (c) => {
+  try {
+    const { initializeD1Schema } = await import('../utils/d1');
+    const primaryRes = await initializeD1Schema(c.env.DB);
+    let archiveRes = { success: true, error: null as string | null };
+    if (c.env.DB_ARCHIVE && c.env.DB_ARCHIVE !== c.env.DB) {
+      archiveRes = await initializeD1Schema(c.env.DB_ARCHIVE);
+    }
+
+    const { getD1StatusReport } = await import('../utils/d1');
+    const statusReport = await getD1StatusReport(c.env);
+
+    return c.json({
+      success: primaryRes.success && archiveRes.success,
+      data: {
+        message: 'اسکیما و جداول استاندارد با موفقیت روی دیتابیس‌های D1 اعمال و همگام‌سازی شدند.',
+        primary: primaryRes,
+        archive: archiveRes,
+        status: statusReport,
+      },
+      error: primaryRes.error || archiveRes.error || null,
+    }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// POST /api/d1/query - Execute raw SQL query on Primary or Archive D1 Database
 api.post('/d1/query', async (c) => {
   try {
-    const body = await c.req.json();
-    const query = body.query;
+    const body: { query?: string; target_db?: 'primary' | 'archive' } = await c.req.json().catch(() => ({}));
+    const query = (body.query || '').trim();
     if (!query) return c.json({ success: false, data: null, error: 'Query is empty' }, 400);
 
+    const targetDb = body.target_db === 'archive' && c.env.DB_ARCHIVE ? c.env.DB_ARCHIVE : c.env.DB;
+    if (!targetDb) {
+      return c.json({ success: false, data: null, error: 'Database instance not available' }, 500);
+    }
+
     const startTime = Date.now();
-    let results = [];
+    let results: any[] = [];
     try {
-      const res = await c.env.DB.prepare(query).all();
+      const res = await targetDb.prepare(query).all();
       results = res.results || [];
     } catch (e) {
-       const res = await c.env.DB.prepare(query).run() as any;
-       results = [{ success: res.success, changes: res.meta?.changes, last_row_id: res.meta?.last_row_id }];
+      const res = (await targetDb.prepare(query).run()) as any;
+      results = [{ success: res.success, changes: res.meta?.changes, last_row_id: res.meta?.last_row_id }];
     }
     const duration = Date.now() - startTime;
-    return c.json({ success: true, data: { results, duration }, error: null });
-  } catch (err) {
+    return c.json({
+      success: true,
+      data: {
+        target: body.target_db === 'archive' ? 'DB_ARCHIVE (news_archive_db)' : 'DB (news_db)',
+        results,
+        duration,
+      },
+      error: null,
+    });
+  } catch (err: any) {
     return c.json({ success: false, data: null, error: err.message }, 500);
   }
 });
@@ -3113,6 +3288,75 @@ api.post('/secrets/cf-api-inspect', async (c) => {
       },
       error: storesRes.errors?.[0]?.message || quotaRes.errors?.[0]?.message || null,
     }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// ==========================================
+// AUTOPILOT / AUTONOMOUS PIPELINE ENDPOINTS
+// ==========================================
+
+// GET /api/autopilot/status - Get current Autopilot Switch status & latest run telemetry
+api.get('/autopilot/status', async (c) => {
+  try {
+    const { getAutopilotStatus } = await import('../cron/pipeline.ts');
+    const status = getAutopilotStatus();
+    return c.json({
+      success: true,
+      data: status,
+      error: null,
+    }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// POST /api/autopilot/toggle - Turn Autopilot Switch ON or OFF
+api.post('/autopilot/toggle', async (c) => {
+  try {
+    const body: { active?: boolean } = await c.req.json().catch(() => ({}));
+    const { setAutopilotActive, getAutopilotStatus } = await import('../cron/pipeline.ts');
+    const current = getAutopilotStatus();
+    const newActive = typeof body.active === 'boolean' ? body.active : !current.isActive;
+    setAutopilotActive(newActive);
+
+    // If turned ON, store state in KV if available
+    if (c.env.CACHE) {
+      try {
+        await c.env.CACHE.put('system_autopilot_active', newActive ? '1' : '0');
+      } catch {}
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        active: newActive,
+        message: newActive 
+          ? 'اتوپایلوت هوشمند هزاردستان روشن شد. فرآیند پایش خودکار اخبار، ترجمه و توزیع چندمقصده فعال است.'
+          : 'اتوپایلوت خودکار خاموش شد. سیستم در حالت کنترل دستی قرار گرفت.',
+      },
+      error: null,
+    }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// POST /api/autopilot/run-now - Trigger the full autonomous pipeline immediately
+api.post('/autopilot/run-now', async (c) => {
+  try {
+    const body: { limit?: number } = await c.req.json().catch(() => ({}));
+    const { runAutonomousPipeline } = await import('../cron/pipeline.ts');
+    
+    console.log('[Autopilot Route] User triggered manual run of full pipeline...');
+    const result = await runAutonomousPipeline(c.env, { limit: body.limit || 5 });
+
+    return c.json({
+      success: result.success,
+      data: result,
+      error: result.error,
+    }, result.success ? 200 : 500);
   } catch (err: any) {
     return c.json({ success: false, data: null, error: err.message }, 500);
   }

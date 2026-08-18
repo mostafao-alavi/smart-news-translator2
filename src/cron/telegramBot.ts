@@ -73,6 +73,60 @@ export function formatTelegramMessage(payload: {
 }
 
 /**
+ * Send photo with caption to Telegram channel/chat
+ */
+export async function sendPhotoTelegram(options: {
+  token?: string;
+  chatId?: string;
+  photoUrl: string;
+  caption: string;
+  parse_mode?: 'HTML' | 'MarkdownV2' | 'Markdown';
+}): Promise<TelegramResponse> {
+  const token = options.token || (typeof process !== 'undefined' ? process.env.TELEGRAM_BOT_TOKEN : undefined);
+  const chatId = options.chatId || (typeof process !== 'undefined' ? process.env.TELEGRAM_CHAT_ID : undefined) || '@updaaate_crypto';
+
+  if (!token) {
+    return {
+      ok: false,
+      error_code: 400,
+      description: 'TELEGRAM_BOT_TOKEN is not configured in environment or parameter.'
+    };
+  }
+
+  const apiUrl = `https://api.telegram.org/bot${token}/sendPhoto`;
+
+  // Telegram caption has a 1024 char limit for photos
+  let caption = options.caption;
+  if (caption.length > 1024) {
+    caption = caption.slice(0, 1020) + '...';
+  }
+
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        chat_id: chatId,
+        photo: options.photoUrl,
+        caption: caption,
+        parse_mode: options.parse_mode || 'HTML',
+      }),
+    });
+
+    const data: TelegramResponse = await response.json();
+    return data;
+  } catch (err: any) {
+    return {
+      ok: false,
+      error_code: 500,
+      description: `Telegram Photo API network error: ${err.message}`,
+    };
+  }
+}
+
+/**
  * Send raw text message to Telegram channel/chat
  */
 export async function sendTelegramMessage(options: {
@@ -121,7 +175,7 @@ export async function sendTelegramMessage(options: {
 }
 
 /**
- * Send news article to Telegram channel
+ * Send news article to Telegram channel (including Featured Image with automatic text fallback)
  */
 export async function sendNewsToTelegram(payload: TelegramNewsPayload): Promise<TelegramResponse> {
   const formattedText = formatTelegramMessage({
@@ -132,6 +186,27 @@ export async function sendNewsToTelegram(payload: TelegramNewsPayload): Promise<
     channelHandle: payload.chatId || '@updaaate_crypto',
   });
 
+  // If featured image exists, send as photo with caption
+  if (payload.imageUrl && payload.imageUrl.startsWith('http')) {
+    try {
+      const photoRes = await sendPhotoTelegram({
+        token: payload.botToken,
+        chatId: payload.chatId || '@updaaate_crypto',
+        photoUrl: payload.imageUrl,
+        caption: formattedText,
+        parse_mode: 'HTML',
+      });
+
+      if (photoRes.ok) {
+        return photoRes;
+      }
+      console.warn(`[Telegram] sendPhoto failed (${photoRes.description}), falling back to text message`);
+    } catch (e: any) {
+      console.warn(`[Telegram] sendPhoto error (${e.message}), falling back to text message`);
+    }
+  }
+
+  // Fallback to text message
   return await sendTelegramMessage({
     token: payload.botToken,
     chatId: payload.chatId || '@updaaate_crypto',
@@ -153,6 +228,7 @@ export async function distributeToTelegram(
     summary?: string;
     tags?: string[];
     source_url?: string;
+    featured_image?: string | null;
   }
 ): Promise<TelegramResponse> {
   const token = await getSecret(env, 'TELEGRAM_BOT_TOKEN', '');
@@ -163,6 +239,28 @@ export async function distributeToTelegram(
     return { ok: false, description: 'Telegram bot token not set in Secrets Store or Environment' };
   }
 
+  let imageUrl = translated.featured_image || null;
+
+  // If no featured image in payload, look up in article_images or articles table
+  if (!imageUrl && env.DB) {
+    try {
+      const imgRow = await env.DB.prepare(
+        'SELECT image_url FROM article_images WHERE article_id = ? ORDER BY is_featured DESC, id ASC LIMIT 1'
+      ).bind(translated.article_id).first<{ image_url: string }>();
+
+      if (imgRow && imgRow.image_url) {
+        imageUrl = imgRow.image_url;
+      } else {
+        const artRow = await env.DB.prepare(
+          'SELECT featured_image FROM articles WHERE id = ?'
+        ).bind(translated.article_id).first<{ featured_image: string }>();
+        if (artRow && artRow.featured_image) {
+          imageUrl = artRow.featured_image;
+        }
+      }
+    } catch {}
+  }
+
   const response = await sendNewsToTelegram({
     botToken: token,
     chatId,
@@ -170,6 +268,7 @@ export async function distributeToTelegram(
     content: translated.summary || translated.content,
     tags: translated.tags,
     sourceUrl: translated.source_url,
+    imageUrl: imageUrl || undefined,
   });
 
   const targetDb = env.DB_ARCHIVE || env.DB;
@@ -196,11 +295,25 @@ export async function distributeToTelegram(
         'telegram_distribution',
         translated.article_id,
         response.ok ? 'success' : 'failed',
-        response.ok ? `Sent message ID ${messageId}` : response.description
+        response.ok ? `Sent message ID ${messageId} (with photo: ${!!imageUrl})` : response.description
       ).run();
     } catch (err: any) {
       console.warn('[Telegram] Failed to log distribution record:', err.message);
     }
+  }
+
+  // Update articles table
+  if (env.DB && response.ok) {
+    try {
+      const messageId = String(response.result?.message_id);
+      await env.DB.prepare(`
+        UPDATE articles
+        SET telegram_sync_status = 'published',
+            telegram_message_id = ?,
+            telegram_published_at = datetime('now')
+        WHERE id = ?
+      `).bind(messageId, translated.article_id).run();
+    } catch {}
   }
 
   return response;

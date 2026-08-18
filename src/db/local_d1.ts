@@ -80,7 +80,17 @@ const memoryTables: Record<string, any[]> = {
     { id: 1, event_type: 'SYSTEM_START', description: 'سامانه هزاردستان با موفقیت راه‌اندازی شد', created_at: new Date().toISOString() }
   ],
   translation_history: [],
-  system_metrics: []
+  system_metrics: [],
+  source_configs: [],
+  crawl_jobs: [],
+  crawl_checkpoints: [],
+  sitemap_entries: [],
+  crawl_errors: [],
+  article_blocks: [],
+  tags: [],
+  article_tags: [],
+  backup_destinations: [],
+  backup_runs: []
 };
 
 let autoIncrementIds: Record<string, number> = {
@@ -93,7 +103,17 @@ let autoIncrementIds: Record<string, number> = {
   platforms: 3,
   execution_logs: 1,
   system_events: 2,
-  translation_history: 1
+  translation_history: 1,
+  source_configs: 1,
+  crawl_jobs: 1,
+  crawl_checkpoints: 1,
+  sitemap_entries: 1,
+  crawl_errors: 1,
+  article_blocks: 1,
+  tags: 1,
+  article_tags: 1,
+  backup_destinations: 1,
+  backup_runs: 1
 };
 
 function executeMemoryQuery(query: string, params: any[] = []): { results?: any[]; meta?: any } {
