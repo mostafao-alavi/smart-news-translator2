@@ -57,7 +57,7 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
   isTriggeringTranslator,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'translated' | 'pending'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'translated' | 'pending' | 'published'>('all');
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [translatingId, setTranslatingId] = useState<number | null>(null);
 
@@ -126,6 +126,9 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
     }
     if (statusFilter === 'pending') {
       return matchesSearch && item.translation_status !== 'completed';
+    }
+    if (statusFilter === 'published') {
+      return matchesSearch && (item.wp_sync_status === 'published' || item.telegram_sync_status === 'published');
     }
     return matchesSearch;
   });
@@ -301,6 +304,14 @@ export const NewsFeedTab: React.FC<NewsFeedTabProps> = ({
               }`}
             >
               در انتظار
+            </button>
+            <button
+              onClick={() => setStatusFilter('published')}
+              className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-all ${
+                statusFilter === 'published' ? 'bg-white text-purple-700 shadow-2xs' : 'text-gray-500 hover:text-gray-800'
+              }`}
+            >
+              منتشر شده
             </button>
           </div>
         </div>

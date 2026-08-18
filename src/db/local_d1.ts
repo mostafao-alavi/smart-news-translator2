@@ -126,6 +126,10 @@ try {
   safeAddColumn('articles', 'wp_post_id INTEGER');
   safeAddColumn('articles', 'wp_published_at TEXT');
   safeAddColumn('articles', 'wp_error TEXT');
+  safeAddColumn('articles', 'telegram_sync_status TEXT DEFAULT "pending"');
+  safeAddColumn('articles', 'telegram_message_id TEXT');
+  safeAddColumn('articles', 'telegram_published_at TEXT');
+  safeAddColumn('articles', 'telegram_error TEXT');
 
   safeAddColumn('sources', 'url TEXT');
   safeAddColumn('sources', 'selector TEXT');
@@ -137,6 +141,7 @@ try {
     const baseCol = tableInfo.find((c: any) => c.name === 'base_url');
     if ((rssCol && rssCol.notnull === 1) || (baseCol && baseCol.notnull === 1)) {
       sqlite.exec(`
+        PRAGMA foreign_keys = OFF;
         CREATE TABLE IF NOT EXISTS sources_v2 (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           name TEXT NOT NULL,
@@ -156,6 +161,7 @@ try {
         FROM sources;
         DROP TABLE sources;
         ALTER TABLE sources_v2 RENAME TO sources;
+        PRAGMA foreign_keys = ON;
       `);
     }
   } catch (schemaErr: any) {

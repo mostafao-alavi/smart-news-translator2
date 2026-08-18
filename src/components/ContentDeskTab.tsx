@@ -53,10 +53,11 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
   onNavigateTab
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterMode, setFilterMode] = useState<'all' | 'pending' | 'translated'>('all');
+  const [filterMode, setFilterMode] = useState<'all' | 'pending' | 'translated' | 'published'>('all');
   const [selectedArticleId, setSelectedArticleId] = useState<number | null>(news.length > 0 ? news[0].id : null);
   const [translatingId, setTranslatingId] = useState<number | null>(null);
   const [publishingId, setPublishingId] = useState<number | null>(null);
+  const [publishingPlatform, setPublishingPlatform] = useState<'wordpress' | 'telegram' | 'both' | null>(null);
   const [publishFeedback, setPublishFeedback] = useState<{ id: number; message: string; ok: boolean } | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
 
@@ -90,6 +91,9 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
     }
     if (filterMode === 'translated') {
       return item.translation_status === 'completed' || !!item.translated_title;
+    }
+    if (filterMode === 'published') {
+      return item.wp_sync_status === 'published' || item.telegram_sync_status === 'published';
     }
     return true;
   });
@@ -169,9 +173,10 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
     }
   };
 
-  // Action: Distribute to WordPress / Telegram
-  const handleDistribute = async (id: number) => {
+  // Action: Distribute to Specific Platforms (Separate WordPress / Telegram / Both)
+  const handleDistributePlatform = async (id: number, target: 'wordpress' | 'telegram' | 'both') => {
     setPublishingId(id);
+    setPublishingPlatform(target);
     setPublishFeedback(null);
     try {
       const currentDetail = detailsMap[id];
@@ -181,11 +186,13 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
       const contentToSend = currentDetail?.translated_content || articleItem?.translated_content || '';
       const tagsToSend = currentDetail?.tags || articleItem?.tags || null;
 
+      const platforms = target === 'both' ? ['wordpress', 'telegram'] : [target];
+
       const res = await fetch(`/api/news/${id}/distribute`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          platforms: ['wordpress', 'telegram'],
+          platforms,
           translated_title: titleToSend,
           translated_content: contentToSend,
           tags: tagsToSend,
@@ -194,9 +201,10 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
       const data = await res.json();
       if (data.success) {
         const parts = [];
-        if (data.data?.telegram?.sent) parts.push('تلگرام');
-        if (data.data?.wordpress?.published) parts.push('وردپرس');
-        const targetStr = parts.length > 0 ? parts.join(' و ') : 'سایت و تلگرام';
+        if (data.data?.telegram?.sent) parts.push('کانال تلگرام');
+        if (data.data?.wordpress?.published) parts.push('سایت وردپرس');
+        
+        let targetStr = parts.length > 0 ? parts.join(' و ') : (target === 'telegram' ? 'کانال تلگرام' : target === 'wordpress' ? 'سایت وردپرس' : 'سایت و تلگرام');
         setPublishFeedback({ id, message: `✅ با موفقیت در ${targetStr} منتشر شد!`, ok: true });
         onRefresh();
       } else {
@@ -206,6 +214,7 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
       setPublishFeedback({ id, message: `❌ خطا: ${err.message}`, ok: false });
     } finally {
       setPublishingId(null);
+      setPublishingPlatform(null);
       setTimeout(() => setPublishFeedback(null), 6000);
     }
   };
@@ -218,6 +227,7 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
 
   const pendingCount = news.filter((n) => !n.translated_title && n.translation_status !== 'completed').length;
   const translatedCount = news.filter((n) => !!n.translated_title || n.translation_status === 'completed').length;
+  const publishedCount = news.filter((n) => n.wp_sync_status === 'published' || n.telegram_sync_status === 'published').length;
 
   return (
     <div className="space-y-6">
@@ -229,7 +239,7 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
             میز کار و تحریریه محتوا
           </h2>
           <p className="text-xs text-gray-500 mt-1">
-            مشاهده، ترجمه هوشمند با هوش مصنوعی و انتشار اخبار کوین‌تلگراف به زبان فارسی
+            مشاهده، ترجمه هوشمند با هوش مصنوعی و انتشار اخبار به تفکیک تلگرام و سایت وردپرس
           </p>
         </div>
 
@@ -272,8 +282,8 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
           />
         </div>
 
-        {/* 3 State Filters */}
-        <div className="flex items-center gap-1.5 p-1 bg-gray-100/80 rounded-xl shrink-0">
+        {/* 4 State Filters */}
+        <div className="flex items-center gap-1.5 p-1 bg-gray-100/80 rounded-xl shrink-0 flex-wrap">
           <button
             onClick={() => setFilterMode('all')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -308,6 +318,18 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
             <CheckCircle2 className="w-3 h-3" />
             ترجمه شده ({translatedCount})
           </button>
+
+          <button
+            onClick={() => setFilterMode('published')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+              filterMode === 'published'
+                ? 'bg-purple-600 text-white shadow-2xs'
+                : 'text-purple-700 hover:bg-purple-50'
+            }`}
+          >
+            <Send className="w-3 h-3" />
+            منتشر شده ({publishedCount})
+          </button>
         </div>
       </div>
 
@@ -327,6 +349,8 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
             {filteredNews.map((item) => {
               const isSelected = selectedArticleId === item.id;
               const isTranslated = !!item.translated_title || item.translation_status === 'completed';
+              const isWpPublished = item.wp_sync_status === 'published';
+              const isTelegramPublished = item.telegram_sync_status === 'published';
               const isItemTranslating = translatingId === item.id;
 
               return (
@@ -361,20 +385,36 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
                       </h4>
 
                       {/* Meta badges */}
-                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                         {isTranslated ? (
-                          <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-md font-bold flex items-center gap-1">
+                          <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded-md font-bold flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                            ترجمه فارسی
+                            ترجمه
                           </span>
                         ) : (
-                          <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-md font-bold flex items-center gap-1">
+                          <span className="text-[10px] bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-md font-bold flex items-center gap-1">
                             <Clock className="w-3 h-3 text-amber-600" />
-                            در انتظار ترجمه
+                            در صف ترجمه
                           </span>
                         )}
 
-                        <span className="text-[10px] text-gray-400">
+                        {/* WordPress Publish Badge */}
+                        {isWpPublished && (
+                          <span className="text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded-md font-bold flex items-center gap-1" title="منتشر شده در سایت وردپرس">
+                            <Globe className="w-3 h-3 text-purple-600" />
+                            سایت
+                          </span>
+                        )}
+
+                        {/* Telegram Publish Badge */}
+                        {isTelegramPublished && (
+                          <span className="text-[10px] bg-sky-50 text-sky-700 border border-sky-200 px-1.5 py-0.5 rounded-md font-bold flex items-center gap-1" title="منتشر شده در تلگرام">
+                            <Send className="w-3 h-3 text-sky-600" />
+                            تلگرام
+                          </span>
+                        )}
+
+                        <span className="text-[10px] text-gray-400 mr-auto">
                           {new Date(item.published_at || item.created_at || '').toLocaleDateString('fa-IR')}
                         </span>
                       </div>
@@ -398,7 +438,7 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
                           className="text-[10px] font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
                         >
                           <Sparkles className={`w-3 h-3 ${isItemTranslating ? 'animate-spin' : ''}`} />
-                          <span>{isItemTranslating ? 'ترجمه...' : 'ترجمه با AI'}</span>
+                          <span>{isItemTranslating ? 'ترجمه...' : 'ترجمه AI'}</span>
                         </button>
                       )}
 
@@ -556,6 +596,124 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
                   </div>
                 )}
 
+                {/* Publishing Status Dashboard Box (Separated Website vs Telegram) */}
+                <div className="bg-gray-50 border border-gray-200/80 rounded-2xl p-4 space-y-3">
+                  <div className="text-xs font-bold text-gray-900 flex items-center justify-between">
+                    <span>وضعیت انتشار در مقاصد (Destinations Status)</span>
+                    <span className="text-[11px] font-normal text-gray-500">جلوگیری از ارسال تکراری</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Site (WordPress) Status Card */}
+                    <div className={`p-3 rounded-xl border flex flex-col justify-between gap-2 ${
+                      selectedArticle.wp_sync_status === 'published'
+                        ? 'bg-purple-50/70 border-purple-200 text-purple-900'
+                        : 'bg-white border-gray-200 text-gray-700'
+                    }`}>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold flex items-center gap-1.5">
+                            <Globe className="w-3.5 h-3.5 text-purple-600" />
+                            وب‌سایت (updaaate.ir)
+                          </span>
+                          {selectedArticle.wp_sync_status === 'published' ? (
+                            <span className="text-[10px] bg-purple-200 text-purple-800 px-2 py-0.5 rounded-full font-bold">
+                              منتشر شده
+                            </span>
+                          ) : (
+                            <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-bold">
+                              در انتظار
+                            </span>
+                          )}
+                        </div>
+                        {selectedArticle.wp_sync_status === 'published' && (
+                          <div className="text-[10px] text-purple-700 mt-1">
+                            شناسه پست: {selectedArticle.wp_post_id ? `#${selectedArticle.wp_post_id}` : 'ثبت‌شده'}
+                            {selectedArticle.wp_published_at && ` • ${new Date(selectedArticle.wp_published_at).toLocaleTimeString('fa-IR')}`}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => handleDistributePlatform(selectedArticle.id, 'wordpress')}
+                        disabled={publishingId === selectedArticle.id || !fullTranslatedContent}
+                        className={`text-xs font-bold px-3 py-2 rounded-xl transition-all shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                          selectedArticle.wp_sync_status === 'published'
+                            ? 'bg-purple-100 hover:bg-purple-200 text-purple-800 border border-purple-200'
+                            : 'bg-purple-600 hover:bg-purple-700 text-white'
+                        }`}
+                      >
+                        {publishingId === selectedArticle.id && publishingPlatform === 'wordpress' ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Globe className="w-3.5 h-3.5" />
+                        )}
+                        <span>
+                          {publishingId === selectedArticle.id && publishingPlatform === 'wordpress'
+                            ? 'در حال ارسال به سایت...'
+                            : selectedArticle.wp_sync_status === 'published'
+                            ? 'ارسال مجدد به سایت'
+                            : 'انتشار در سایت (WordPress)'}
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Telegram Status Card */}
+                    <div className={`p-3 rounded-xl border flex flex-col justify-between gap-2 ${
+                      selectedArticle.telegram_sync_status === 'published'
+                        ? 'bg-sky-50/70 border-sky-200 text-sky-900'
+                        : 'bg-white border-gray-200 text-gray-700'
+                    }`}>
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold flex items-center gap-1.5">
+                            <Send className="w-3.5 h-3.5 text-sky-600" />
+                            کانال تلگرام
+                          </span>
+                          {selectedArticle.telegram_sync_status === 'published' ? (
+                            <span className="text-[10px] bg-sky-200 text-sky-800 px-2 py-0.5 rounded-full font-bold">
+                              ارسال شده
+                            </span>
+                          ) : (
+                            <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full font-bold">
+                              در انتظار
+                            </span>
+                          )}
+                        </div>
+                        {selectedArticle.telegram_sync_status === 'published' && (
+                          <div className="text-[10px] text-sky-700 mt-1">
+                            شناسه پیام: {selectedArticle.telegram_message_id ? `#${selectedArticle.telegram_message_id}` : 'ارسال‌شده'}
+                            {selectedArticle.telegram_published_at && ` • ${new Date(selectedArticle.telegram_published_at).toLocaleTimeString('fa-IR')}`}
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => handleDistributePlatform(selectedArticle.id, 'telegram')}
+                        disabled={publishingId === selectedArticle.id || !fullTranslatedContent}
+                        className={`text-xs font-bold px-3 py-2 rounded-xl transition-all shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                          selectedArticle.telegram_sync_status === 'published'
+                            ? 'bg-sky-100 hover:bg-sky-200 text-sky-800 border border-sky-200'
+                            : 'bg-sky-600 hover:bg-sky-700 text-white'
+                        }`}
+                      >
+                        {publishingId === selectedArticle.id && publishingPlatform === 'telegram' ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Send className="w-3.5 h-3.5" />
+                        )}
+                        <span>
+                          {publishingId === selectedArticle.id && publishingPlatform === 'telegram'
+                            ? 'در حال ارسال به تلگرام...'
+                            : selectedArticle.telegram_sync_status === 'published'
+                            ? 'ارسال مجدد به تلگرام'
+                            : 'ارسال به کانال تلگرام'}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Publish Status Feedback */}
                 {publishFeedback && publishFeedback.id === selectedArticle.id && (
                   <div
@@ -569,22 +727,33 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
                   </div>
                 )}
 
-                {/* Bottom Main Action Button */}
-                <div className="pt-2 border-t border-gray-100 flex items-center justify-end gap-2">
+                {/* Bottom Combined Distribution Action Button */}
+                <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-3">
+                  <div className="text-[11px] text-gray-500">
+                    {(selectedArticle.wp_sync_status === 'published' && selectedArticle.telegram_sync_status === 'published') ? (
+                      <span className="text-emerald-700 font-bold flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        این خبر در هر دو مقصد (سایت و تلگرام) منتشر شده است.
+                      </span>
+                    ) : (
+                      <span>می‌توانید به صورت جداگانه یا همزمان در هر دو مقصد منتشر کنید.</span>
+                    )}
+                  </div>
+
                   <button
-                    onClick={() => handleDistribute(selectedArticle.id)}
+                    onClick={() => handleDistributePlatform(selectedArticle.id, 'both')}
                     disabled={publishingId === selectedArticle.id || !fullTranslatedContent}
-                    className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer w-full sm:w-auto justify-center"
+                    className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer shrink-0"
                   >
-                    {publishingId === selectedArticle.id ? (
+                    {publishingId === selectedArticle.id && publishingPlatform === 'both' ? (
                       <RefreshCw className="w-4 h-4 animate-spin" />
                     ) : (
-                      <Send className="w-4 h-4" />
+                      <Sparkles className="w-4 h-4" />
                     )}
                     <span>
-                      {publishingId === selectedArticle.id
-                        ? 'در حال انتشار در وردپرس و تلگرام...'
-                        : 'انتشار در وردپرس و تلگرام'}
+                      {publishingId === selectedArticle.id && publishingPlatform === 'both'
+                        ? 'در حال ارسال همزمان...'
+                        : '⚡ انتشار همزمان (سایت + تلگرام)'}
                     </span>
                   </button>
                 </div>

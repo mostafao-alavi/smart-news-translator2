@@ -50,8 +50,8 @@ export const AI_MODELS = [
     color: 'bg-purple-50 text-purple-700 border-purple-200',
   },
   {
-    id: 'gemini-2.5-flash',
-    name: 'Gemini 2.5 Flash',
+    id: 'gemini-3.7-flash',
+    name: 'Gemini 3.7 Flash',
     provider: 'Google AI API',
     desc: 'موتور هوش مصنوعی گوگل (ترجمه هوشمند و فوق سریع)',
     badge: 'گوگل AI',

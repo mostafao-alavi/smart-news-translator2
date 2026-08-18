@@ -65,23 +65,50 @@ function getGeminiClient(apiKey?: string): GoogleGenAI | null {
   const key = apiKey || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined);
   if (!key) return null;
   if (!geminiClient) {
-    geminiClient = new GoogleGenAI({ apiKey: key });
+    geminiClient = new GoogleGenAI({
+      apiKey: key,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        },
+      },
+    });
   }
   return geminiClient;
 }
 
-// Resilient Gemini text generator with automatic fallback across models on 503 / 429
+function sanitizeGeminiModelName(model?: string): string {
+  if (!model) return 'gemini-3.7-flash';
+  const clean = model.split(' ')[0].trim();
+  if (
+    clean.includes('gemini-2.5') || 
+    clean.includes('gemini-1.5') || 
+    clean.includes('gemini-2.0') || 
+    clean === 'gemini-flash'
+  ) {
+    return 'gemini-3.7-flash';
+  }
+  if (!clean.startsWith('gemini-')) {
+    return 'gemini-3.7-flash';
+  }
+  return clean;
+}
+
+// Resilient Gemini text generator with automatic fallback across models on 503 / 429 / 404
 async function generateTextWithGeminiFallback(
   apiKey: string,
   prompt: string,
   preferredModel?: string
 ): Promise<{ text: string; modelUsed: string } | null> {
+  const primaryModel = sanitizeGeminiModelName(preferredModel);
   const modelsToTry = [
-    preferredModel || 'gemini-2.5-flash',
-    'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
+    primaryModel,
     'gemini-3.7-flash',
+    'gemini-flash-latest',
+    'gemini-3.1-flash-lite',
   ].filter((m, idx, arr) => arr.indexOf(m) === idx);
+
+  let lastErrorMsg = '';
 
   for (const model of modelsToTry) {
     // 1. Try Gemini SDK
@@ -98,10 +125,28 @@ async function generateTextWithGeminiFallback(
         }
       }
     } catch (sdkErr: any) {
-      const isCapacityError = sdkErr?.message?.includes('503') || sdkErr?.message?.includes('high demand') || sdkErr?.status === 503;
-      if (!isCapacityError) {
-        console.warn(`[Gemini SDK] Note on model ${model}:`, sdkErr.message || sdkErr);
+      const errMsg = (sdkErr?.message || '').toLowerCase();
+      const isQuotaError = errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('resource_exhausted');
+      
+      const isExpectedError =
+        sdkErr?.status === 429 ||
+        sdkErr?.status === 503 ||
+        sdkErr?.status === 404 ||
+        isQuotaError ||
+        errMsg.includes('503') ||
+        errMsg.includes('high demand') ||
+        errMsg.includes('404') ||
+        errMsg.includes('not found') ||
+        errMsg.includes('no longer available');
+
+      lastErrorMsg = sdkErr.message || String(sdkErr);
+
+      if (!isExpectedError) {
+        console.warn(`[Gemini SDK] Note on model ${model}:`, lastErrorMsg);
       }
+      
+      // If it's a quota error, we still try the direct HTTP fallback just in case,
+      // but it will likely fail. We'll capture the error.
     }
 
     // 2. Direct HTTP Fallback for this model
@@ -123,10 +168,18 @@ async function generateTextWithGeminiFallback(
         if (text) {
           return { text, modelUsed: model };
         }
+      } else {
+        const errJson = await response.json().catch(() => ({}));
+        lastErrorMsg = errJson?.error?.message || `HTTP ${response.status} ${response.statusText}`;
       }
     } catch (httpErr: any) {
-      // Continue to next model in fallback list
+      lastErrorMsg = httpErr.message || String(httpErr);
     }
+  }
+
+  // If we exhaust all models and the last error was a quota/resource_exhausted error, we should throw it
+  if (lastErrorMsg.toLowerCase().includes('quota') || lastErrorMsg.toLowerCase().includes('resource_exhausted') || lastErrorMsg.includes('429')) {
+    throw new Error(`Gemini API Quota Exceeded: ${lastErrorMsg}`);
   }
 
   return null;
@@ -174,7 +227,7 @@ export async function translateTextWithAI(
 
   const truncatedText = text.slice(0, 4000);
   const apiKey = env.GEMINI_API_KEY || (typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined);
-  const isGeminiRequested = preferredModel === 'gemini-3.7-flash' || preferredModel === 'gemini-2.5-flash' || preferredModel === 'gemini-flash-latest' || !preferredModel;
+  const isGeminiRequested = preferredModel === 'gemini-3.7-flash' || preferredModel === 'gemini-flash-latest' || preferredModel?.startsWith('gemini-') || !preferredModel;
 
   const translationPrompt = `شما یک مترجم ارشد و روزنامه‌نگار حرفه‌ای در حوزه فناوری، بازارهای مالی و ارز دیجیتال برای رسانه معتبر «هزاردستان» هستید.
 متن انگلیسی زیر را به زبان فارسی روان، سلیس و با لحن ژورنالیستی و جذاب ترجمه کنید.
@@ -250,6 +303,10 @@ ${truncatedText}`;
   }
 
   // 3. Graceful Fallback if offline
+  if (!env.AI && apiKey) {
+    throw new Error(`Translation failed: AI models unavailable or quota exceeded.`);
+  }
+
   return {
     translatedText: truncatedText,
     modelUsed: preferredModel ? `${preferredModel} (fallback)` : 'fallback-raw'
@@ -433,7 +490,7 @@ export async function translator(env: Env): Promise<{ processed: number; success
           translateTextWithAI(env, article.content || article.title, 'english', 'persian'),
         ]);
 
-        const modelUsed = titleResult.modelUsed || contentResult.modelUsed || 'gemini-2.5-flash';
+        const modelUsed = titleResult.modelUsed || contentResult.modelUsed || 'gemini-3.7-flash';
         const finalTitle = titleResult.translatedText || article.title;
         const finalContent = contentResult.translatedText || article.content;
 

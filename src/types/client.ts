@@ -16,6 +16,14 @@ export interface JoinedArticleNews {
   meta_description?: string | null;
   translated_at: string | null;
   model_used?: string | null;
+  wp_sync_status?: 'pending' | 'published' | 'failed' | string | null;
+  wp_post_id?: number | string | null;
+  wp_published_at?: string | null;
+  wp_error?: string | null;
+  telegram_sync_status?: 'pending' | 'published' | 'failed' | string | null;
+  telegram_message_id?: number | string | null;
+  telegram_published_at?: string | null;
+  telegram_error?: string | null;
 }
 
 export interface SourceItem {

@@ -137,6 +137,10 @@ export async function ensureTablesAndLogs(db: any, force: boolean = false) {
       "ALTER TABLE articles ADD COLUMN wp_post_id INTEGER",
       "ALTER TABLE articles ADD COLUMN wp_published_at TEXT",
       "ALTER TABLE articles ADD COLUMN wp_error TEXT",
+      "ALTER TABLE articles ADD COLUMN telegram_sync_status TEXT DEFAULT 'pending'",
+      "ALTER TABLE articles ADD COLUMN telegram_message_id TEXT",
+      "ALTER TABLE articles ADD COLUMN telegram_published_at TEXT",
+      "ALTER TABLE articles ADD COLUMN telegram_error TEXT",
       "ALTER TABLE translations ADD COLUMN model_used TEXT",
       "ALTER TABLE translations ADD COLUMN ai_model TEXT",
       "ALTER TABLE translations ADD COLUMN approval_status TEXT DEFAULT 'approved'",
@@ -356,6 +360,10 @@ const handleFetchNewsList = async (c: any) => {
         articles.wp_post_id,
         articles.wp_published_at,
         articles.wp_error,
+        articles.telegram_sync_status,
+        articles.telegram_message_id,
+        articles.telegram_published_at,
+        articles.telegram_error,
         translations.translated_title,
         translations.suggested_titles,
         translations.tags,
@@ -413,6 +421,10 @@ const handleFetchArticleDetail = async (c: any) => {
         articles.wp_post_id,
         articles.wp_published_at,
         articles.wp_error,
+        articles.telegram_sync_status,
+        articles.telegram_message_id,
+        articles.telegram_published_at,
+        articles.telegram_error,
         translations.translated_title,
         translations.translated_content,
         translations.suggested_titles,
@@ -1019,52 +1031,55 @@ api.get('/stats', async (c) => {
     // Run parallel queries across Primary DB and Archive DB
     const [
       sourcesCountRes,
+      activeSourcesCountRes,
       articlesCountRes,
-      pendingCountRes,
-      platformsCountRes,
-      translationsCountRes,
+      translatedArticlesCountRes,
+      translationsTableCountRes,
       wpDistCountRes,
+      wpArticlesCountRes,
       allDistCountRes,
-      approvedCountRes,
+      platformsCountRes,
     ] = await Promise.all([
-      // Primary DB queries
+      // 1. Total sources
       primaryDb.prepare('SELECT COUNT(*) as count FROM sources').first<{ count: number }>().catch(() => ({ count: 0 })),
+      // 2. Active sources
+      primaryDb.prepare('SELECT COUNT(*) as count FROM sources WHERE is_active = 1 OR is_active IS NULL').first<{ count: number }>().catch(() => ({ count: 0 })),
+      // 3. Total articles
       primaryDb.prepare('SELECT COUNT(*) as count FROM articles').first<{ count: number }>().catch(() => ({ count: 0 })),
-      primaryDb.prepare("SELECT COUNT(*) as count FROM articles WHERE translation_status = 'pending' OR status = 'pending'").first<{ count: number }>().catch(() => ({ count: 0 })),
-      primaryDb.prepare('SELECT COUNT(*) as count FROM platforms').first<{ count: number }>().catch(() => ({ count: 0 })),
-
-      // Archive DB queries (with fallback if tables don't exist yet)
-      archiveDb.prepare('SELECT COUNT(*) as count FROM translations').first<{ count: number }>().catch(async () => {
-        return (await primaryDb.prepare('SELECT COUNT(*) as count FROM translations').first<{ count: number }>().catch(() => ({ count: 0 }))) || { count: 0 };
+      // 4. Articles with translation_status = 'completed' or status = 'translated'
+      primaryDb.prepare("SELECT COUNT(*) as count FROM articles WHERE translation_status = 'completed' OR status = 'translated'").first<{ count: number }>().catch(() => ({ count: 0 })),
+      // 5. Total records in translations table
+      archiveDb.prepare("SELECT COUNT(DISTINCT article_id) as count FROM translations WHERE translated_title IS NOT NULL AND translated_title != ''").first<{ count: number }>().catch(async () => {
+        return (await primaryDb.prepare("SELECT COUNT(DISTINCT article_id) as count FROM translations WHERE translated_title IS NOT NULL AND translated_title != ''").first<{ count: number }>().catch(() => ({ count: 0 }))) || { count: 0 };
       }),
-      archiveDb.prepare("SELECT COUNT(*) as count FROM distributions WHERE platform = 'wordpress' AND (status = 'sent' OR status = 'published')").first<{ count: number }>().catch(async () => {
-        return (await primaryDb.prepare("SELECT COUNT(*) as count FROM articles WHERE wp_sync_status = 'published'").first<{ count: number }>().catch(() => ({ count: 0 }))) || { count: 0 };
+      // 6. WordPress distributions count
+      archiveDb.prepare("SELECT COUNT(DISTINCT article_id) as count FROM distributions WHERE (platform = 'wordpress' OR target_platform = 'wordpress') AND (status = 'sent' OR status = 'published')").first<{ count: number }>().catch(async () => {
+        return (await primaryDb.prepare("SELECT COUNT(DISTINCT translation_id) as count FROM distributions WHERE target_platform = 'wordpress'").first<{ count: number }>().catch(() => ({ count: 0 }))) || { count: 0 };
       }),
+      // 7. Articles with wp_sync_status = 'published'
+      primaryDb.prepare("SELECT COUNT(*) as count FROM articles WHERE wp_sync_status = 'published'").first<{ count: number }>().catch(() => ({ count: 0 })),
+      // 8. All distributions
       archiveDb.prepare('SELECT COUNT(*) as count FROM distributions').first<{ count: number }>().catch(async () => {
         return (await primaryDb.prepare('SELECT COUNT(*) as count FROM distributions').first<{ count: number }>().catch(() => ({ count: 0 }))) || { count: 0 };
       }),
-      archiveDb.prepare("SELECT COUNT(*) as count FROM translations WHERE approval_status = 'approved' OR approval_status IS NULL").first<{ count: number }>().catch(async () => {
-        return (await primaryDb.prepare("SELECT COUNT(*) as count FROM translations WHERE approval_status = 'approved' OR approval_status IS NULL").first<{ count: number }>().catch(() => ({ count: 0 }))) || { count: 0 };
-      }),
+      // 9. Platforms
+      primaryDb.prepare('SELECT COUNT(*) as count FROM platforms').first<{ count: number }>().catch(() => ({ count: 0 })),
     ]);
 
-    // Fallback if wpDistCount is 0, check primary db articles published
-    let wpPublished = wpDistCountRes?.count || 0;
-    if (wpPublished === 0) {
-      const primaryWp = await primaryDb.prepare("SELECT COUNT(*) as count FROM articles WHERE wp_sync_status = 'published'").first<{ count: number }>().catch(() => ({ count: 0 }));
-      if (primaryWp && primaryWp.count > 0) {
-        wpPublished = primaryWp.count;
-      }
-    }
+    const totalArticles = articlesCountRes?.count || 0;
+    const totalTranslations = Math.max(translationsTableCountRes?.count || 0, translatedArticlesCountRes?.count || 0);
+    const activeSources = (activeSourcesCountRes?.count && activeSourcesCountRes.count > 0) ? activeSourcesCountRes.count : (sourcesCountRes?.count || 0);
+    const pendingTranslations = Math.max(0, totalArticles - totalTranslations);
+    const wpPublished = Math.max(wpDistCountRes?.count || 0, wpArticlesCountRes?.count || 0);
 
     const stats: StatsData = {
-      sources_count: sourcesCountRes?.count || 0,
-      articles_count: articlesCountRes?.count || 0,
-      translations_count: translationsCountRes?.count || 0,
-      pending_translations_count: pendingCountRes?.count || 0,
+      sources_count: activeSources,
+      articles_count: totalArticles,
+      translations_count: totalTranslations,
+      pending_translations_count: pendingTranslations,
       distributions_count: allDistCountRes?.count || 0,
       platforms_count: platformsCountRes?.count || 0,
-      approved_translations_count: approvedCountRes?.count || 0,
+      approved_translations_count: totalTranslations,
       wp_published_count: wpPublished,
     };
 
@@ -1156,7 +1171,7 @@ api.post('/news/:id/translate', async (c) => {
       body = await c.req.json<{ model?: string }>();
     } catch {}
 
-    const selectedModel = body.model || 'gemini-2.5-flash';
+    const selectedModel = body.model || 'gemini-3.7-flash';
 
     const article = await c.env.DB.prepare('SELECT * FROM articles WHERE id = ?').bind(id).first<any>();
     if (!article) {
@@ -1266,7 +1281,7 @@ api.post('/news/custom', async (c) => {
     }
     const title = body.title.trim();
     const content = (body.content || title).trim();
-    const selectedModel = body.model || 'gemini-2.5-flash';
+    const selectedModel = body.model || 'gemini-3.7-flash';
     const now = new Date().toISOString();
     const customUrl = `https://custom-entry.local/${Date.now()}`;
 
@@ -1350,7 +1365,7 @@ api.post('/translate', async (c) => {
   try {
     const body = await c.req.json().catch(() => ({}));
     const text = (body.text || body.input || '').trim();
-    const model = body.model || body.selectedModel || 'gemini-2.5-flash';
+    const model = body.model || body.selectedModel || 'gemini-3.7-flash';
     const targetLang = body.targetLang || 'persian';
 
     if (!text) {
@@ -2076,7 +2091,7 @@ api.post('/telegram/send/:articleId', async (c) => {
 
         const finalTitle = titleRes.translatedText || article.title;
         const finalContent = contentRes.translatedText || article.content || article.title;
-        const modelUsed = titleRes.modelUsed || contentRes.modelUsed || 'gemini-2.5-flash';
+        const modelUsed = titleRes.modelUsed || contentRes.modelUsed || 'gemini-3.7-flash';
 
         const seoRes = await generateSeoMetadataWithAI(env, finalTitle, finalContent, modelUsed);
         const tagsJson = JSON.stringify(seoRes.tags);
@@ -2251,7 +2266,7 @@ api.post('/wp-sync', async (c) => {
 
           const finalTitle = titleRes.translatedText || article.title;
           const finalContent = contentRes.translatedText || article.content || article.title;
-          const modelUsed = titleRes.modelUsed || contentRes.modelUsed || 'gemini-2.5-flash';
+          const modelUsed = titleRes.modelUsed || contentRes.modelUsed || 'gemini-3.7-flash';
 
           const seoRes = await generateSeoMetadataWithAI(env, finalTitle, finalContent, modelUsed);
           const tagsJson = JSON.stringify(seoRes.tags);
@@ -2484,7 +2499,7 @@ api.post('/news/:id/distribute', async (c) => {
 
         const finalTitle = titleRes.translatedText || article.title;
         const finalContent = contentRes.translatedText || article.content || article.title;
-        const modelUsed = titleRes.modelUsed || contentRes.modelUsed || 'gemini-2.5-flash';
+        const modelUsed = titleRes.modelUsed || contentRes.modelUsed || 'gemini-3.7-flash';
 
         const seoRes = await generateSeoMetadataWithAI(env, finalTitle, finalContent, modelUsed);
         const titlesJson = JSON.stringify(seoRes.suggested_titles);
@@ -2565,17 +2580,49 @@ api.post('/news/:id/distribute', async (c) => {
             sent: true,
             message_id: tgRes.result?.message_id || 1,
           };
+          if (env.DB) {
+            try {
+              await env.DB.prepare(`
+                UPDATE articles
+                SET telegram_sync_status = 'published',
+                    telegram_message_id = ?,
+                    telegram_published_at = datetime('now'),
+                    telegram_error = NULL
+                WHERE id = ?
+              `).bind(String(tgRes.result?.message_id || '1'), articleId).run();
+            } catch {}
+          }
         } else {
           responseData.telegram = {
             sent: false,
             error: tgRes.description || 'عدم موفقیت در ارسال تلگرام',
           };
+          if (env.DB) {
+            try {
+              await env.DB.prepare(`
+                UPDATE articles
+                SET telegram_sync_status = 'failed',
+                    telegram_error = ?
+                WHERE id = ?
+              `).bind(tgRes.description || 'خطای تلگرام', articleId).run();
+            } catch {}
+          }
         }
       } catch (tgErr: any) {
         responseData.telegram = {
           sent: false,
           error: tgErr.message,
         };
+        if (env.DB) {
+          try {
+            await env.DB.prepare(`
+              UPDATE articles
+              SET telegram_sync_status = 'failed',
+                  telegram_error = ?
+              WHERE id = ?
+            `).bind(tgErr.message || 'خطای سرور', articleId).run();
+          } catch {}
+        }
       }
     }
 
@@ -2601,17 +2648,49 @@ api.post('/news/:id/distribute', async (c) => {
             post_id: Number(wpRes.postId) || wpRes.postId,
             post_url: wpRes.postUrl,
           };
+          if (env.DB) {
+            try {
+              await env.DB.prepare(`
+                UPDATE articles
+                SET wp_sync_status = 'published',
+                    wp_post_id = ?,
+                    wp_published_at = datetime('now'),
+                    wp_error = NULL
+                WHERE id = ?
+              `).bind(Number(wpRes.postId) || null, articleId).run();
+            } catch {}
+          }
         } else {
           responseData.wordpress = {
             published: false,
             error: wpRes.error || 'عدم موفقیت در ارسال به وردپرس',
           };
+          if (env.DB) {
+            try {
+              await env.DB.prepare(`
+                UPDATE articles
+                SET wp_sync_status = 'failed',
+                    wp_error = ?
+                WHERE id = ?
+              `).bind(wpRes.error || 'خطای وردپرس', articleId).run();
+            } catch {}
+          }
         }
       } catch (wpErr: any) {
         responseData.wordpress = {
           published: false,
           error: wpErr.message,
         };
+        if (env.DB) {
+          try {
+            await env.DB.prepare(`
+              UPDATE articles
+              SET wp_sync_status = 'failed',
+                  wp_error = ?
+              WHERE id = ?
+            `).bind(wpErr.message || 'خطای سرور', articleId).run();
+          } catch {}
+        }
       }
     }
 

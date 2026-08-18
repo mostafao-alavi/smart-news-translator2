@@ -64,7 +64,8 @@ export const AppDashboard: React.FC = () => {
     setNewsError(false);
     try {
       const res = await fetch('/api/news');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) {
           setNews(json.data);
@@ -89,7 +90,8 @@ export const AppDashboard: React.FC = () => {
     setSourcesError(false);
     try {
       const res = await fetch('/api/sources');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) {
           setSources(json.data);
@@ -113,7 +115,8 @@ export const AppDashboard: React.FC = () => {
     if (!isPoll) setLoadingStats(true);
     try {
       const res = await fetch('/api/stats');
-      if (res.ok) {
+      const contentType = res.headers.get('content-type') || '';
+      if (res.ok && contentType.includes('application/json')) {
         const json = await res.json();
         if (json.success && json.data) {
           setStats(json.data);
@@ -382,7 +385,7 @@ export const AppDashboard: React.FC = () => {
     return null;
   };
 
-  const pendingCount = news.filter((n) => n.translation_status === 'pending' || !n.translated_title).length;
+  const pendingCount = stats?.pending_translations_count ?? news.filter((n) => n.translation_status !== 'completed' && !n.translated_title).length;
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dir-rtl font-sans antialiased selection:bg-orange-500 selection:text-white">

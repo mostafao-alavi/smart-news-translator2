@@ -154,7 +154,7 @@ export const SystemAISettingsTab: React.FC<SystemAISettingsTabProps> = ({
   const [queryError, setQueryError] = useState<string | null>(null);
 
   // State for AI model config
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-2.5-flash');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.7-flash');
   const [systemPrompt, setSystemPrompt] = useState<string>(
     `You are an expert crypto and tech news editor and professional translator. Translate the provided English news article into fluent, professional, and natural Persian (Farsi). Maintain accurate technical terms while ensuring high readability.`
   );
@@ -621,7 +621,7 @@ export const SystemAISettingsTab: React.FC<SystemAISettingsTabProps> = ({
             <button
               type="button"
               onClick={() => {
-                setSelectedModel('gemini-2.5-flash');
+                setSelectedModel('gemini-3.7-flash');
                 setSystemPrompt(
                   `You are an expert crypto and tech news editor and professional translator. Translate the provided English news article into fluent, professional, and natural Persian (Farsi). Maintain accurate technical terms while ensuring high readability.`
                 );
