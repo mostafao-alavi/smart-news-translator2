@@ -18,10 +18,13 @@ import {
   Edit3,
   Copy,
   Check,
-  ImageIcon
+  ImageIcon,
+  Eye,
+  Columns2
 } from 'lucide-react';
 import { DatabaseErrorFallback } from './DatabaseErrorFallback';
 import { EmptyState } from './EmptyState';
+import { ArticleDualViewModal } from './ArticleDualViewModal';
 
 interface ContentDeskTabProps {
   news: JoinedArticleNews[];
@@ -60,6 +63,8 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
   const [publishingPlatform, setPublishingPlatform] = useState<'wordpress' | 'telegram' | 'both' | null>(null);
   const [publishFeedback, setPublishFeedback] = useState<{ id: number; message: string; ok: boolean } | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
+  const [deskViewMode, setDeskViewMode] = useState<'both' | 'translated' | 'original'>('both');
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Lazy loading article detail (content & translated content)
   const [detailsMap, setDetailsMap] = useState<Record<number, { content?: string; translated_content?: string; translated_title?: string; featured_image?: string; tags?: string[] | string }>>({});
@@ -464,7 +469,7 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
             {selectedArticle ? (
               <>
                 {/* Header & Source Link */}
-                <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                <div className="flex items-center justify-between pb-3 border-b border-gray-100 flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-gray-500">منبع خبر:</span>
                     <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2.5 py-0.5 rounded-lg border border-orange-100">
@@ -472,15 +477,57 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
                     </span>
                   </div>
 
-                  <a
-                    href={selectedArticle.original_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs font-bold text-gray-500 hover:text-orange-600 flex items-center gap-1 transition-colors"
-                  >
-                    <span>مشاهده خبر اصلی</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setIsModalOpen(true)}
+                      className="text-xs font-bold bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-xl shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer"
+                      title="مشاهده تمام صفحه و مقایسه رو در رو"
+                    >
+                      <Columns2 className="w-3.5 h-3.5 text-orange-400" />
+                      <span>مقایسه تمام‌صفحه رو در رو</span>
+                    </button>
+
+                    <a
+                      href={selectedArticle.original_url || selectedArticle.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs font-bold text-gray-500 hover:text-orange-600 flex items-center gap-1 transition-colors bg-gray-50 px-2.5 py-1.5 rounded-xl border border-gray-200"
+                    >
+                      <span>لینک خبر اصلی</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+
+                {/* View Mode Switcher */}
+                <div className="flex items-center justify-between bg-gray-100 p-1 rounded-xl">
+                  <div className="text-xs font-bold text-gray-600 px-2">حالت نمایش:</div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setDeskViewMode('both')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        deskViewMode === 'both' ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      هر دو (مقایسه)
+                    </button>
+                    <button
+                      onClick={() => setDeskViewMode('translated')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        deskViewMode === 'translated' ? 'bg-white text-emerald-800 shadow-2xs' : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      متن فارسی
+                    </button>
+                    <button
+                      onClick={() => setDeskViewMode('original')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        deskViewMode === 'original' ? 'bg-white text-blue-800 shadow-2xs' : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      متن انگلیسی اصلی
+                    </button>
+                  </div>
                 </div>
 
                 {/* Featured Image */}
@@ -490,89 +537,125 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
                       src={featuredImage}
                       alt={selectedArticle.title}
                       className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
                     />
                   </div>
                 )}
 
                 {/* Persian Translated Title */}
-                <div>
-                  <label className="text-[11px] font-bold text-gray-500 block mb-1">
-                    عنوان فارسی خبر:
-                  </label>
-                  <input
-                    type="text"
-                    value={currentTitle || ''}
-                    onChange={(e) => {
-                      if (!selectedArticleId) return;
-                      setDetailsMap((prev) => ({
-                        ...prev,
-                        [selectedArticleId]: {
-                          ...prev[selectedArticleId],
-                          translated_title: e.target.value
-                        }
-                      }));
-                    }}
-                    placeholder="هنوز ترجمه نشده است..."
-                    className="w-full font-bold text-gray-900 text-sm bg-gray-50/70 border border-gray-200 rounded-xl px-3.5 py-2.5 focus:bg-white focus:border-orange-500 focus:outline-none transition-colors"
-                  />
-                </div>
-
-                {/* Original English Title */}
-                <div className="bg-gray-50 rounded-xl p-3 border border-gray-200/70 text-xs text-gray-600 font-mono ltr leading-relaxed">
-                  <span className="text-[10px] uppercase font-bold text-gray-400 block mb-1 rtl font-sans">
-                    تیتر انگلیسی:
-                  </span>
-                  {selectedArticle.title}
-                </div>
-
-                {/* Persian Content Text */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[11px] font-bold text-gray-500">
-                      متن ترجمه شده:
+                {(deskViewMode === 'both' || deskViewMode === 'translated') && (
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-500 block mb-1">
+                      عنوان فارسی خبر:
                     </label>
-                    {fullTranslatedContent && (
-                      <button
-                        onClick={() => handleCopyText(fullTranslatedContent, selectedArticle.id)}
-                        className="text-[10px] text-gray-500 hover:text-gray-900 flex items-center gap-1"
-                      >
-                        {copiedId === selectedArticle.id ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                        <span>{copiedId === selectedArticle.id ? 'کپی شد' : 'کپی متن'}</span>
-                      </button>
-                    )}
-                  </div>
-
-                  {loadingDetail ? (
-                    <div className="h-40 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-center text-xs text-gray-400 animate-pulse">
-                      در حال بارگذاری متن مقاله...
-                    </div>
-                  ) : fullTranslatedContent ? (
-                    <textarea
-                      value={fullTranslatedContent || ''}
+                    <input
+                      type="text"
+                      value={currentTitle || ''}
                       onChange={(e) => {
                         if (!selectedArticleId) return;
                         setDetailsMap((prev) => ({
                           ...prev,
                           [selectedArticleId]: {
                             ...prev[selectedArticleId],
-                            translated_content: e.target.value
+                            translated_title: e.target.value
                           }
                         }));
                       }}
-                      rows={8}
-                      className="w-full text-xs text-gray-800 leading-relaxed bg-gray-50/70 border border-gray-200 rounded-xl p-3.5 focus:bg-white focus:border-orange-500 focus:outline-none transition-colors"
+                      placeholder="هنوز ترجمه نشده است..."
+                      className="w-full font-bold text-gray-900 text-sm bg-gray-50/70 border border-gray-200 rounded-xl px-3.5 py-2.5 focus:bg-white focus:border-orange-500 focus:outline-none transition-colors"
                     />
-                  ) : (
-                    <div className="p-6 bg-amber-50/40 rounded-xl border border-amber-200 text-center space-y-2">
-                      <p className="text-xs font-bold text-amber-800">این خبر هنوز ترجمه نشده است</p>
-                      <button
-                        onClick={() => handleSingleTranslate(selectedArticle.id)}
-                        disabled={translatingId === selectedArticle.id}
-                        className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                      >
-                        <Sparkles className={`w-3.5 h-3.5 ${translatingId === selectedArticle.id ? 'animate-spin' : ''}`} />
-                        <span>{translatingId === selectedArticle.id ? 'در حال ترجمه...' : 'ترجمه فوری با هوش مصنوعی'}</span>
-                      </button>
+                  </div>
+                )}
+
+                {/* Original English Title */}
+                {(deskViewMode === 'both' || deskViewMode === 'original') && (
+                  <div className="bg-blue-50/40 rounded-xl p-3 border border-blue-100 text-xs text-gray-800 font-mono dir-ltr text-left leading-relaxed">
+                    <span className="text-[10px] font-bold text-blue-600 block mb-1 dir-rtl text-right font-sans">
+                      عنوان انگلیسی اصلی (ترجمه نشده):
+                    </span>
+                    {selectedArticle.title}
+                  </div>
+                )}
+
+                {/* Dynamic Content Views based on deskViewMode */}
+                <div className={`grid gap-4 ${deskViewMode === 'both' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+                  {/* Persian Content Text */}
+                  {(deskViewMode === 'both' || deskViewMode === 'translated') && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>متن ترجمه شده به فارسی:</span>
+                        </label>
+                        {fullTranslatedContent && (
+                          <button
+                            onClick={() => handleCopyText(fullTranslatedContent, selectedArticle.id)}
+                            className="text-[10px] text-gray-500 hover:text-gray-900 flex items-center gap-1"
+                          >
+                            {copiedId === selectedArticle.id ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                            <span>{copiedId === selectedArticle.id ? 'کپی شد' : 'کپی'}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {loadingDetail ? (
+                        <div className="h-48 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-center text-xs text-gray-400 animate-pulse">
+                          در حال بارگذاری متن مقاله...
+                        </div>
+                      ) : fullTranslatedContent ? (
+                        <textarea
+                          value={fullTranslatedContent || ''}
+                          onChange={(e) => {
+                            if (!selectedArticleId) return;
+                            setDetailsMap((prev) => ({
+                              ...prev,
+                              [selectedArticleId]: {
+                                ...prev[selectedArticleId],
+                                translated_content: e.target.value
+                              }
+                            }));
+                          }}
+                          rows={10}
+                          className="w-full text-xs text-gray-800 leading-relaxed bg-emerald-50/20 border border-emerald-200 rounded-xl p-3.5 focus:bg-white focus:border-emerald-500 focus:outline-none transition-colors"
+                        />
+                      ) : (
+                        <div className="p-6 bg-amber-50/40 rounded-xl border border-amber-200 text-center space-y-2">
+                          <p className="text-xs font-bold text-amber-800">این خبر هنوز ترجمه نشده است</p>
+                          <button
+                            onClick={() => handleSingleTranslate(selectedArticle.id)}
+                            disabled={translatingId === selectedArticle.id}
+                            className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            <Sparkles className={`w-3.5 h-3.5 ${translatingId === selectedArticle.id ? 'animate-spin' : ''}`} />
+                            <span>{translatingId === selectedArticle.id ? 'در حال ترجمه...' : 'ترجمه فوری با هوش مصنوعی'}</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Original Untranslated English Content */}
+                  {(deskViewMode === 'both' || deskViewMode === 'original') && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold text-blue-700 flex items-center gap-1">
+                          <Globe className="w-3.5 h-3.5" />
+                          <span>متن کامل اصلی (ترجمه نشده):</span>
+                        </label>
+                        {fullContent && (
+                          <button
+                            onClick={() => handleCopyText(fullContent, selectedArticle.id + 100000)}
+                            className="text-[10px] text-gray-500 hover:text-gray-900 flex items-center gap-1"
+                          >
+                            {copiedId === selectedArticle.id + 100000 ? <Check className="w-3 h-3 text-blue-600" /> : <Copy className="w-3 h-3" />}
+                            <span>{copiedId === selectedArticle.id + 100000 ? 'کپی شد' : 'کپی اصلی'}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="w-full text-xs text-gray-800 leading-relaxed font-mono dir-ltr text-left bg-blue-50/20 border border-blue-200 rounded-xl p-3.5 max-h-72 overflow-y-auto whitespace-pre-line">
+                        {fullContent || 'متن کامل انگلیسی هنوز از منبع استخراج نشده است.'}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -766,6 +849,16 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* Dual-View Article Modal (Original Untranslated & Translated Full Text) */}
+      <ArticleDualViewModal
+        article={selectedArticle}
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onTranslate={onTranslateArticle}
+        onDistribute={(id) => handleDistributePlatform(id, 'both')}
+        onRefresh={onRefresh}
+      />
     </div>
   );
 };
