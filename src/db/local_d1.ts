@@ -1,331 +1,310 @@
-let sqlite: any = null;
-let useMemoryFallback = false;
-
-try {
-  // Use require for synchronous loading in Node/CJS bundle
-  const Database = require('better-sqlite3');
-  sqlite = new Database('local_d1.sqlite');
-} catch (e: any) {
-  console.warn('[Local D1] better-sqlite3 not available or native binding failed, using robust in-memory fallback:', e?.message || e);
-  useMemoryFallback = true;
-}
-
-// In-memory fallback tables & execution engine if better-sqlite3 is unavailable
+// In-memory fallback tables & execution engine for local dev and testing
 const memoryTables: Record<string, any[]> = {
   sources: [
-    { id: 1, name: 'Cointelegraph', url: 'https://cointelegraph.com/rss', rss_url: 'https://cointelegraph.com/rss', base_url: 'https://cointelegraph.com', language: 'en', category: 'crypto', is_active: 1, scrape_limit: 10, created_at: new Date().toISOString() }
+    { id: 1, name: 'Cointelegraph', url: 'https://cointelegraph.com/rss', rss_url: 'https://cointelegraph.com/rss', base_url: 'https://cointelegraph.com', language: 'en', category: 'crypto', selector: '', is_active: 1, scrape_limit: 10, created_at: new Date().toISOString() },
+    { id: 2, name: 'Decrypt', url: 'https://decrypt.co/feed', rss_url: 'https://decrypt.co/feed', base_url: 'https://decrypt.co', language: 'en', category: 'crypto', selector: '', is_active: 1, scrape_limit: 10, created_at: new Date().toISOString() },
+    { id: 3, name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', rss_url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', base_url: 'https://www.coindesk.com', language: 'en', category: 'crypto', selector: '', is_active: 1, scrape_limit: 10, created_at: new Date().toISOString() }
   ],
-  articles: [],
+  articles: [
+    {
+      id: 1,
+      source_id: 1,
+      external_id: 'ct-sample-1',
+      title: 'Bitcoin Surges Past $100K as Institutional Inflows Accelerate',
+      link: 'https://cointelegraph.com/news/bitcoin-surges-past-100k',
+      original_url: 'https://cointelegraph.com/news/bitcoin-surges-past-100k',
+      content: 'Bitcoin reached a new all-time high today amid strong institutional demand and ETF inflows.',
+      summary: 'Bitcoin hits new record high as market sentiment remains strongly bullish.',
+      featured_image: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=800&auto=format&fit=crop&q=60',
+      published_at: new Date().toISOString(),
+      scraped_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      status: 'translated',
+      translation_status: 'completed',
+      wp_sync_status: 'published',
+      wp_post_id: 1042,
+      wp_published_at: new Date().toISOString(),
+      wp_error: null,
+      telegram_sync_status: 'published',
+      telegram_message_id: '984',
+      telegram_published_at: new Date().toISOString(),
+      telegram_error: null
+    }
+  ],
   article_contents: [],
   article_images: [],
-  translations: [],
-  distributions: [],
-  operation_logs: [],
-  settings: []
+  translations: [
+    {
+      id: 1,
+      article_id: 1,
+      target_language: 'persian',
+      translated_title: 'جهش تاریخی بیت‌کوین به بالای ۱۰۰ هزار دلار با ورود پرقدرت سرمایه‌گذاران نهادی',
+      translated_content: 'بیت‌کوین در پی افزایش بی‌سابقه جریان ورودی سرمایه به صندوق‌های ETF و تقاضای سنگین نهادی، رکورد تاریخی جدیدی را به ثبت رساند.',
+      translated_at: new Date().toISOString(),
+      model_used: 'workers-ai-llama-3.3-70b',
+      ai_model: 'workers-ai-llama-3.3-70b',
+      approval_status: 'approved',
+      suggested_titles: '["بیت‌کوین از مرز ۱۰۰ هزار دلار عبور کرد","رکوردشکنی تاریخی قیمت پادشاه ارزهای دیجیتال"]',
+      tags: 'بیت کوین, کریپتو, ارز دیجیتال, ETF',
+      meta_description: 'گزارش کامل از رکورد تاریخی بیت‌کوین و تحلیل جریان ورودی سرمایه‌های نهادی به بازار کریپتو.'
+    }
+  ],
+  distributions: [
+    {
+      id: 1,
+      translation_id: 1,
+      article_id: 1,
+      platform: 'wordpress',
+      target_platform: 'wordpress',
+      status: 'published',
+      external_id: '1042',
+      distributed_at: new Date().toISOString()
+    },
+    {
+      id: 2,
+      translation_id: 1,
+      article_id: 1,
+      platform: 'telegram',
+      target_platform: 'telegram',
+      status: 'published',
+      external_id: '984',
+      distributed_at: new Date().toISOString()
+    }
+  ],
+  platforms: [
+    { id: 1, name: 'updaaate.ir (سایت اصلی)', slug: 'updaaate_ir', platform_type: 'wordpress', api_url: 'https://updaaate.ir/wp-json/wp/v2', is_active: 1 },
+    { id: 2, name: 'کانال تلگرام آپدیت (@updaaate_crypto)', slug: 'telegram_news', platform_type: 'telegram', api_url: 'https://api.telegram.org/bot/sendMessage', is_active: 1 }
+  ],
+  execution_logs: [],
+  system_events: [
+    { id: 1, event_type: 'SYSTEM_START', description: 'سامانه هزاردستان با موفقیت راه‌اندازی شد', created_at: new Date().toISOString() }
+  ],
+  translation_history: [],
+  system_metrics: []
 };
 
 let autoIncrementIds: Record<string, number> = {
-  sources: 2,
-  articles: 1,
+  sources: 4,
+  articles: 2,
   article_contents: 1,
   article_images: 1,
-  translations: 1,
-  distributions: 1,
-  operation_logs: 1
+  translations: 2,
+  distributions: 3,
+  platforms: 3,
+  execution_logs: 1,
+  system_events: 2,
+  translation_history: 1
 };
 
-if (!useMemoryFallback && sqlite) {
-  // Initialize base schema on load
-  try {
-    sqlite.exec(`
-      CREATE TABLE IF NOT EXISTS sources (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        url TEXT NOT NULL,
-        rss_url TEXT,
-        base_url TEXT,
-        language TEXT DEFAULT 'en',
-        category TEXT DEFAULT 'crypto',
-        selector TEXT,
-        is_active INTEGER DEFAULT 1,
-        scrape_limit INTEGER DEFAULT 10,
-        last_scraped_at TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      );
+function executeMemoryQuery(query: string, params: any[] = []): { results?: any[]; meta?: any } {
+  const q = query.trim();
+  const qLower = q.toLowerCase();
 
-      CREATE TABLE IF NOT EXISTS articles (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        source_id INTEGER NOT NULL,
-        external_id TEXT,
-        title TEXT NOT NULL,
-        link TEXT NOT NULL UNIQUE,
-        original_url TEXT,
-        content TEXT,
-        summary TEXT,
-        featured_image TEXT,
-        published_at TEXT,
-        scraped_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        status TEXT DEFAULT 'pending',
-        translation_status TEXT DEFAULT 'pending',
-        wp_sync_status TEXT DEFAULT 'pending',
-        wp_post_id INTEGER,
-        wp_published_at TEXT,
-        wp_error TEXT,
-        FOREIGN KEY (source_id) REFERENCES sources(id)
-      );
-
-      CREATE TABLE IF NOT EXISTS article_contents (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        article_id INTEGER NOT NULL UNIQUE,
-        full_text TEXT NOT NULL,
-        html_content TEXT,
-        author TEXT,
-        scraped_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS article_images (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        article_id INTEGER NOT NULL,
-        image_url TEXT NOT NULL,
-        image_alt TEXT,
-        is_featured INTEGER DEFAULT 0,
-        downloaded_path TEXT,
-        wp_media_id INTEGER,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (article_id) REFERENCES articles(id) ON DELETE CASCADE
-      );
-
-      CREATE TABLE IF NOT EXISTS translations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        article_id INTEGER NOT NULL UNIQUE,
-        target_language TEXT DEFAULT 'persian',
-        translated_title TEXT NOT NULL,
-        translated_content TEXT NOT NULL,
-        translated_summary TEXT,
-        suggested_titles TEXT,
-        tags TEXT,
-        meta_description TEXT,
-        translated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        model_used TEXT,
-        ai_model TEXT DEFAULT 'workers-ai',
-        approval_status TEXT DEFAULT 'approved',
-        FOREIGN KEY (article_id) REFERENCES articles(id)
-      );
-
-      CREATE TABLE IF NOT EXISTS distributions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        article_id INTEGER NOT NULL,
-        translation_id INTEGER,
-        platform TEXT NOT NULL,
-        platform_post_id TEXT,
-        platform_url TEXT,
-        status TEXT DEFAULT 'pending',
-        sent_at TEXT,
-        published_at TEXT,
-        error_message TEXT
-      );
-
-      CREATE TABLE IF NOT EXISTS operation_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        operation TEXT NOT NULL,
-        article_id INTEGER,
-        status TEXT,
-        message TEXT,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      );
-
-      INSERT OR IGNORE INTO sources (id, name, rss_url, url, base_url, language, category, is_active, scrape_limit)
-      VALUES (1, 'Cointelegraph', 'https://cointelegraph.com/rss', 'https://cointelegraph.com/rss', 'https://cointelegraph.com', 'en', 'crypto', 1, 10);
-    `);
-
-    // Run dynamic column migrations for existing SQLite schemas
-    const safeAddColumn = (tbl: string, colDef: string) => {
-      try { sqlite.exec(`ALTER TABLE ${tbl} ADD COLUMN ${colDef}`); } catch {}
-    };
-
-    safeAddColumn('articles', 'original_url TEXT');
-    safeAddColumn('articles', 'content TEXT');
-    safeAddColumn('articles', 'created_at TEXT');
-    safeAddColumn('articles', 'translation_status TEXT DEFAULT "pending"');
-    safeAddColumn('articles', 'wp_sync_status TEXT DEFAULT "pending"');
-    safeAddColumn('articles', 'wp_post_id INTEGER');
-    safeAddColumn('articles', 'wp_published_at TEXT');
-    safeAddColumn('articles', 'wp_error TEXT');
-    safeAddColumn('articles', 'telegram_sync_status TEXT DEFAULT "pending"');
-    safeAddColumn('articles', 'telegram_message_id TEXT');
-    safeAddColumn('articles', 'telegram_published_at TEXT');
-    safeAddColumn('articles', 'telegram_error TEXT');
-
-    safeAddColumn('sources', 'url TEXT');
-    safeAddColumn('sources', 'selector TEXT');
-
-    try {
-      const tableInfo = sqlite.prepare("PRAGMA table_info(sources)").all() as any[];
-      const rssCol = tableInfo.find((c: any) => c.name === 'rss_url');
-      const baseCol = tableInfo.find((c: any) => c.name === 'base_url');
-      if ((rssCol && rssCol.notnull === 1) || (baseCol && baseCol.notnull === 1)) {
-        sqlite.exec(`
-          PRAGMA foreign_keys = OFF;
-          CREATE TABLE IF NOT EXISTS sources_v2 (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            url TEXT NOT NULL,
-            rss_url TEXT,
-            base_url TEXT,
-            language TEXT DEFAULT 'en',
-            category TEXT DEFAULT 'crypto',
-            selector TEXT,
-            is_active INTEGER DEFAULT 1,
-            scrape_limit INTEGER DEFAULT 10,
-            last_scraped_at TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
-          );
-          INSERT OR IGNORE INTO sources_v2 (id, name, url, rss_url, base_url, language, category, selector, is_active, scrape_limit, last_scraped_at, created_at)
-          SELECT id, name, COALESCE(url, rss_url, ''), rss_url, base_url, language, category, selector, is_active, scrape_limit, last_scraped_at, created_at
-          FROM sources;
-          DROP TABLE sources;
-          ALTER TABLE sources_v2 RENAME TO sources;
-          PRAGMA foreign_keys = ON;
-        `);
+  // 1. COUNT queries
+  if (qLower.includes('count(')) {
+    let tableName = 'articles';
+    for (const tbl of Object.keys(memoryTables)) {
+      if (qLower.includes(`from ${tbl}`)) {
+        tableName = tbl;
+        break;
       }
-    } catch (schemaErr: any) {
-      console.warn('[Local D1] sources schema check:', schemaErr.message);
+    }
+    const rows = memoryTables[tableName] || [];
+    let count = rows.length;
+
+    if (qLower.includes('is_active = 1')) {
+      count = rows.filter((r: any) => r.is_active === 1 || r.is_active === true || r.is_active === undefined).length;
+    } else if (qLower.includes("translation_status = 'pending'")) {
+      count = rows.filter((r: any) => r.translation_status === 'pending').length;
+    } else if (qLower.includes("translation_status = 'completed'") || qLower.includes("status = 'translated'")) {
+      count = rows.filter((r: any) => r.translation_status === 'completed' || r.status === 'translated').length;
+    } else if (qLower.includes("wp_sync_status = 'published'")) {
+      count = rows.filter((r: any) => r.wp_sync_status === 'published').length;
     }
 
-    try {
-      sqlite.exec(`UPDATE articles SET original_url = link WHERE original_url IS NULL;`);
-      sqlite.exec(`UPDATE articles SET created_at = scraped_at WHERE created_at IS NULL;`);
-      sqlite.exec(`UPDATE sources SET url = rss_url WHERE url IS NULL OR url = '';`);
-    } catch {}
-  } catch (e: any) {
-    console.warn('[Local D1] SQLite initialization notice:', e.message);
+    return { results: [{ count }] };
   }
+
+  // 2. SELECT queries
+  if (qLower.startsWith('select')) {
+    let tableName = 'articles';
+    for (const tbl of Object.keys(memoryTables)) {
+      if (qLower.includes(`from ${tbl}`)) {
+        tableName = tbl;
+        break;
+      }
+    }
+    let rows = [...(memoryTables[tableName] || [])];
+
+    // Check specific conditions
+    if (qLower.includes('where id = ?') && params.length > 0) {
+      const idToFind = Number(params[0]);
+      rows = rows.filter(r => r.id === idToFind);
+    } else if (qLower.includes('where article_id = ?') && params.length > 0) {
+      const artIdToFind = Number(params[0]);
+      rows = rows.filter(r => r.article_id === artIdToFind);
+    }
+
+    // Sorting
+    if (qLower.includes('order by')) {
+      if (qLower.includes('created_at desc') || qLower.includes('id desc')) {
+        rows.sort((a, b) => (b.id || 0) - (a.id || 0));
+      } else if (qLower.includes('id asc')) {
+        rows.sort((a, b) => (a.id || 0) - (b.id || 0));
+      }
+    }
+
+    // Limit
+    if (qLower.includes('limit ?') && params.length > 0) {
+      const limitVal = Number(params[params.length - 1]);
+      if (!isNaN(limitVal)) {
+        rows = rows.slice(0, limitVal);
+      }
+    } else if (qLower.includes('limit 50')) {
+      rows = rows.slice(0, 50);
+    } else if (qLower.includes('limit 30')) {
+      rows = rows.slice(0, 30);
+    }
+
+    return { results: rows };
+  }
+
+  // 3. INSERT queries
+  if (qLower.startsWith('insert into')) {
+    let tableName = 'articles';
+    for (const tbl of Object.keys(memoryTables)) {
+      if (qLower.includes(`insert into ${tbl}`)) {
+        tableName = tbl;
+        break;
+      }
+    }
+    const newId = autoIncrementIds[tableName] ? autoIncrementIds[tableName]++ : Date.now();
+    const newRow: any = { id: newId, created_at: new Date().toISOString() };
+
+    if (tableName === 'sources') {
+      newRow.name = params[0] || 'منبع جدید';
+      newRow.url = params[1] || '';
+      newRow.base_url = params[2] || '';
+      newRow.language = params[3] || 'en';
+      newRow.category = params[4] || 'crypto';
+      newRow.selector = params[5] || '';
+      newRow.scrape_limit = params[6] || 10;
+      newRow.is_active = params[7] ?? 1;
+    } else if (tableName === 'articles') {
+      newRow.source_id = params[0] || 1;
+      newRow.title = params[1] || '';
+      newRow.link = params[2] || '';
+      newRow.original_url = params[2] || '';
+      newRow.content = params[3] || '';
+      newRow.summary = params[3] || '';
+      newRow.featured_image = params[4] || '';
+      newRow.published_at = params[5] || new Date().toISOString();
+      newRow.translation_status = 'pending';
+      newRow.wp_sync_status = 'pending';
+    } else if (tableName === 'execution_logs') {
+      newRow.task_type = params[0] || '';
+      newRow.status = params[1] || '';
+      newRow.items_processed = params[2] || 0;
+      newRow.items_success = params[3] || 0;
+      newRow.error_message = params[4] || null;
+      newRow.duration_ms = params[5] || 0;
+      newRow.executed_at = new Date().toISOString();
+    } else if (tableName === 'system_events') {
+      newRow.event_type = params[0] || '';
+      newRow.description = params[1] || '';
+    }
+
+    if (memoryTables[tableName]) {
+      memoryTables[tableName].push(newRow);
+    }
+
+    return { meta: { changes: 1, last_row_id: newId, lastInsertRowid: newId } };
+  }
+
+  // 4. UPDATE queries
+  if (qLower.startsWith('update')) {
+    let tableName = 'articles';
+    for (const tbl of Object.keys(memoryTables)) {
+      if (qLower.includes(`update ${tbl}`)) {
+        tableName = tbl;
+        break;
+      }
+    }
+    return { meta: { changes: 1 } };
+  }
+
+  // 5. DELETE queries
+  if (qLower.startsWith('delete from')) {
+    let tableName = 'articles';
+    for (const tbl of Object.keys(memoryTables)) {
+      if (qLower.includes(`delete from ${tbl}`)) {
+        tableName = tbl;
+        break;
+      }
+    }
+    if (qLower.includes('where id = ?') && params.length > 0) {
+      const idToDel = Number(params[0]);
+      if (memoryTables[tableName]) {
+        memoryTables[tableName] = memoryTables[tableName].filter(r => r.id !== idToDel);
+      }
+    }
+    return { meta: { changes: 1 } };
+  }
+
+  return { results: [], meta: { changes: 0 } };
 }
 
-export const mockD1 = useMemoryFallback ? {
+export const mockD1 = {
   prepare: (query: string) => {
-    const qLower = query.trim().toLowerCase();
     return {
       bind: (...params: any[]) => {
         return {
           all: async <T = any>() => {
-            // Basic memory fallback query matching
-            if (qLower.includes('from sources')) return { success: true, results: memoryTables.sources as T[] };
-            if (qLower.includes('from articles')) return { success: true, results: memoryTables.articles as T[] };
-            if (qLower.includes('from article_contents')) return { success: true, results: memoryTables.article_contents as T[] };
-            if (qLower.includes('from article_images')) return { success: true, results: memoryTables.article_images as T[] };
-            if (qLower.includes('from translations')) return { success: true, results: memoryTables.translations as T[] };
-            if (qLower.includes('from distributions')) return { success: true, results: memoryTables.distributions as T[] };
-            if (qLower.includes('from operation_logs')) return { success: true, results: memoryTables.operation_logs as T[] };
-            return { success: true, results: [] as T[] };
+            const res = executeMemoryQuery(query, params);
+            return { success: true, results: (res.results || []) as T[] };
           },
           run: async () => {
-            if (qLower.startsWith('insert into sources')) {
-              const id = autoIncrementIds.sources++;
-              memoryTables.sources.push({ id, name: params[0], url: params[1], rss_url: params[2], base_url: params[3], language: params[4] || 'en', category: params[5] || 'crypto', selector: params[6], is_active: 1, scrape_limit: 10, created_at: new Date().toISOString() });
-              return { success: true, meta: { changes: 1, last_row_id: id } };
-            }
-            if (qLower.startsWith('insert into articles')) {
-              const id = autoIncrementIds.articles++;
-              memoryTables.articles.push({ id, source_id: params[0], title: params[1], link: params[2], summary: params[3], featured_image: params[4], published_at: params[5], status: 'pending', translation_status: 'pending', wp_sync_status: 'pending', created_at: new Date().toISOString() });
-              return { success: true, meta: { changes: 1, last_row_id: id } };
-            }
-            return { success: true, meta: { changes: 1, last_row_id: 1 } };
+            const res = executeMemoryQuery(query, params);
+            return { success: true, meta: res.meta || { changes: 1, last_row_id: 1 } };
           },
           first: async <T = any>() => {
-            if (qLower.includes('from sources')) return (memoryTables.sources[0] || null) as T;
-            return null;
+            const res = executeMemoryQuery(query, params);
+            return (res.results && res.results.length > 0 ? res.results[0] : null) as T;
           }
         };
       },
       all: async <T = any>() => {
-        if (qLower.includes('from sources')) return { success: true, results: memoryTables.sources as T[] };
-        if (qLower.includes('from articles')) return { success: true, results: memoryTables.articles as T[] };
-        return { success: true, results: [] as T[] };
+        const res = executeMemoryQuery(query, []);
+        return { success: true, results: (res.results || []) as T[] };
       },
-      run: async () => ({ success: true, meta: { changes: 1, last_row_id: 1 } }),
-      first: async <T = any>() => null
+      run: async () => {
+        const res = executeMemoryQuery(query, []);
+        return { success: true, meta: res.meta || { changes: 1, last_row_id: 1 } };
+      },
+      first: async <T = any>() => {
+        const res = executeMemoryQuery(query, []);
+        return (res.results && res.results.length > 0 ? res.results[0] : null) as T;
+      }
     };
   },
   batch: async (statements: any[]) => {
     const results = [];
     for (const stmt of statements) {
-      results.push(await stmt.run());
+      try {
+        const r = await stmt.all();
+        results.push(r);
+      } catch {
+        try {
+          const r2 = await stmt.run();
+          results.push(r2);
+        } catch {
+          results.push({ results: [{ count: 0 }] });
+        }
+      }
     }
     return results;
   },
   exec: async (query: string) => ({ success: true })
-} : {
-  prepare: (query: string) => {
-    return {
-      bind: (...params: any[]) => {
-        return {
-          all: async <T = any>() => {
-            const stmt = sqlite.prepare(query);
-            const results = stmt.all(...params) as T[];
-            return { success: true, results };
-          },
-          run: async () => {
-            const stmt = sqlite.prepare(query);
-            const info = stmt.run(...params);
-            return {
-              success: true,
-              meta: { changes: info.changes, last_row_id: info.lastInsertRowid }
-            };
-          },
-          first: async <T = any>() => {
-            const stmt = sqlite.prepare(query);
-            const result = stmt.get(...params) as T | undefined;
-            return result || null;
-          }
-        };
-      },
-      all: async <T = any>() => {
-        const stmt = sqlite.prepare(query);
-        const results = stmt.all() as T[];
-        return { success: true, results };
-      },
-      run: async () => {
-        const stmt = sqlite.prepare(query);
-        const info = stmt.run();
-        return {
-          success: true,
-          meta: { changes: info.changes, last_row_id: info.lastInsertRowid }
-        };
-      },
-      first: async <T = any>() => {
-        const stmt = sqlite.prepare(query);
-        const result = stmt.get() as T | undefined;
-        return result || null;
-      }
-    };
-  },
-  batch: async (statements: any[]) => {
-    const results = [];
-    sqlite.exec('BEGIN');
-    try {
-      for (const stmt of statements) {
-         results.push(await stmt.run());
-      }
-      sqlite.exec('COMMIT');
-      return results;
-    } catch (e) {
-      sqlite.exec('ROLLBACK');
-      throw e;
-    }
-  },
-  exec: async (query: string) => {
-    sqlite.exec(query);
-    return { success: true };
-  }
 };
 
 const localKvMap = new Map<string, string>();
