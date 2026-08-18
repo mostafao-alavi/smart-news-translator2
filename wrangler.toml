@@ -13,10 +13,27 @@ enabled = true
 directory = "./dist"
 not_found_handling = "single-page-application"
 
-# Cloudflare Secrets Store
+# Cloudflare Secrets Store (Centralized Encrypted Account Secrets)
+# Mode 1: Full Store Binding (Recommended)
 [[secrets_stores]]
 binding = "MY_SEC_STORE"
 store_id = "your-secrets-store-id"
+
+# Mode 2: Individual Secrets Binding (Alternative)
+# [[secrets_store_secrets]]
+# binding = "TELEGRAM_BOT_TOKEN"
+# store_id = "your-secrets-store-id"
+# secret_name = "TELEGRAM_BOT_TOKEN"
+#
+# [[secrets_store_secrets]]
+# binding = "WP_APPLICATION_PASSWORD"
+# store_id = "your-secrets-store-id"
+# secret_name = "WP_APPLICATION_PASSWORD"
+#
+# [[secrets_store_secrets]]
+# binding = "GEMINI_API_KEY"
+# store_id = "your-secrets-store-id"
+# secret_name = "GEMINI_API_KEY"
 
 # D1 Primary — اخبار، محتوا، تصاویر
 [[d1_databases]]

@@ -912,6 +912,104 @@ api.post('/trigger-scraper', async (c) => {
   }
 });
 
+// POST /api/extract-preview - Test live web extraction on any news article URL
+api.post('/extract-preview', async (c) => {
+  try {
+    const body = await c.req.json<{ url: string }>().catch(() => ({ url: '' }));
+    const targetUrl = (body.url || '').trim();
+
+    if (!targetUrl || !targetUrl.startsWith('http')) {
+      return c.json({ success: false, data: null, error: 'آدرس URL معتبر وارد نشده است.' }, 400);
+    }
+
+    const { scrapeFullArticle } = await import('../cron/scraper');
+    const result = await scrapeFullArticle(c.env, targetUrl);
+
+    return c.json({
+      success: true,
+      data: {
+        url: targetUrl,
+        author: result.author,
+        featured_image: result.featured_image,
+        images_count: result.images.length,
+        images: result.images,
+        full_text: result.full_text,
+        text_length: result.full_text.length,
+        paragraphs_count: result.full_text.split('\n\n').filter(p => p.trim().length > 0).length,
+      },
+      error: null,
+    }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// POST /api/articles/:id/refetch-content - Refetch full webpage text for an existing article by ID
+api.post('/articles/:id/refetch-content', async (c) => {
+  const articleId = c.req.param('id');
+  try {
+    let article: any = null;
+    if (c.env.DB) {
+      article = await c.env.DB.prepare('SELECT * FROM articles WHERE id = ?').bind(articleId).first<any>();
+    }
+    if (!article && c.env.DB_ARCHIVE) {
+      article = await c.env.DB_ARCHIVE.prepare('SELECT * FROM articles WHERE id = ?').bind(articleId).first<any>();
+    }
+
+    if (!article) {
+      return c.json({ success: false, data: null, error: 'خبر مورد نظر پیدا نشد.' }, 404);
+    }
+
+    const articleUrl = article.link || article.original_url;
+    if (!articleUrl || !articleUrl.startsWith('http')) {
+      return c.json({ success: false, data: null, error: 'آدرس خبر نامعتبر است.' }, 400);
+    }
+
+    const { scrapeFullArticle, saveArticle } = await import('../cron/scraper');
+    const full = await scrapeFullArticle(c.env, articleUrl);
+
+    if (full.full_text) {
+      await saveArticle(
+        c.env,
+        {
+          source_id: article.source_id || 1,
+          title: article.title,
+          link: articleUrl,
+          summary: article.summary,
+          published_at: article.published_at || new Date().toISOString(),
+          featured_image: article.featured_image || full.featured_image,
+        },
+        full,
+        full.images
+      );
+
+      // Re-read updated article
+      const updated = await c.env.DB.prepare('SELECT * FROM articles WHERE id = ?').bind(articleId).first<any>();
+
+      return c.json({
+        success: true,
+        data: {
+          id: articleId,
+          title: updated?.title || article.title,
+          content: updated?.content || full.full_text,
+          featured_image: updated?.featured_image || full.featured_image,
+          text_length: full.full_text.length,
+          message: 'متن کامل خبر با موفقیت از صفحه وب بازخوانی و ذخیره شد.',
+        },
+        error: null,
+      }, 200);
+    } else {
+      return c.json({
+        success: false,
+        data: null,
+        error: 'امکان استخراج متن کامل از آدرس وب وجود نداشت.',
+      }, 422);
+    }
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
 // POST /api/prune-d1 - Trigger D1 Garbage Collection (Prune old news text > 7 days)
 api.post('/prune-d1', async (c) => {
   const start = Date.now();
@@ -2962,6 +3060,58 @@ api.post('/secrets/sync', async (c) => {
         status
       },
       error: null
+    }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// POST /api/secrets/cf-api-inspect - Inspect Account Secrets Stores, Quota & Scopes via Cloudflare API v4
+api.post('/secrets/cf-api-inspect', async (c) => {
+  try {
+    const body: { account_id?: string; api_token?: string; store_id?: string } = await c.req.json().catch(() => ({}));
+    const accountId = body.account_id || (c.env as any).CLOUDFLARE_ACCOUNT_ID || '';
+    const apiToken = body.api_token || (c.env as any).CLOUDFLARE_API_TOKEN || '';
+    const storeId = body.store_id || '';
+
+    if (!accountId || !apiToken) {
+      return c.json({
+        success: false,
+        data: null,
+        error: 'لطفاً شناسه حساب (Account ID) و توکن API با دسترسی Account Secrets Store Read یا Edit را وارد نمایید.',
+      }, 400);
+    }
+
+    const { listCloudflareStores, listStoreSecrets, getSecretsStoreQuota } = await import('../utils/secrets');
+
+    // 1. Fetch stores
+    const storesRes = await listCloudflareStores(accountId, apiToken);
+    
+    // 2. Fetch quota
+    const quotaRes = await getSecretsStoreQuota(accountId, apiToken);
+
+    // 3. Fetch secrets for selected store or first store
+    let secretsRes: any = null;
+    const targetStoreId = storeId || (storesRes.result && storesRes.result[0]?.id);
+    if (targetStoreId) {
+      secretsRes = await listStoreSecrets(accountId, targetStoreId, apiToken);
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        stores: storesRes.result || [],
+        quota: quotaRes.result?.secrets || null,
+        selectedStoreId: targetStoreId || null,
+        secrets: secretsRes?.result || [],
+        hasWorkersScope: (secretsRes?.result || []).map((s: any) => ({
+          name: s.name,
+          scopes: s.scopes,
+          is_workers_ready: Array.isArray(s.scopes) && s.scopes.includes('workers'),
+        })),
+        api_messages: [...(storesRes.messages || []), ...(quotaRes.messages || [])],
+      },
+      error: storesRes.errors?.[0]?.message || quotaRes.errors?.[0]?.message || null,
     }, 200);
   } catch (err: any) {
     return c.json({ success: false, data: null, error: err.message }, 500);

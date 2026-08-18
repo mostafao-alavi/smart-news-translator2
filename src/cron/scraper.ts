@@ -265,7 +265,7 @@ export async function scrapeCointelegraph(env: Env, options?: { maxItems?: numbe
 }
 
 /**
- * 2. Downloads full article HTML and extracts structured text, markdown, author, and all images
+ * 2. Downloads full article HTML from the web page and extracts clean structured body text, author, and media
  */
 export async function scrapeFullArticle(env: Env, url: string): Promise<{
   full_text: string;
@@ -274,7 +274,7 @@ export async function scrapeFullArticle(env: Env, url: string): Promise<{
   images: Array<{ url: string; alt?: string; is_featured: number }>;
   featured_image: string | null;
 }> {
-  console.log(`[Scraper] Fetching full article text & media: ${url}`);
+  console.log(`[Scraper] Fetching full article webpage from URL: ${url}`);
 
   const defaultResult = {
     full_text: '',
@@ -284,44 +284,142 @@ export async function scrapeFullArticle(env: Env, url: string): Promise<{
     featured_image: null,
   };
 
+  if (!url || !url.startsWith('http')) return defaultResult;
+
   try {
     const response = await fetch(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 CointelegraphReader/1.0',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 CointelegraphNewsReader/1.0',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
       },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(14000),
     });
 
-    if (!response.ok) return defaultResult;
+    if (!response.ok) {
+      console.warn(`[Scraper] Webpage HTTP ${response.status} for ${url}`);
+      return defaultResult;
+    }
 
     const html = await response.text();
     const $ = cheerio.load(html);
 
     // Extract Author
-    const author = $('[class*="author"], .post-meta__author, a[rel="author"], meta[name="author"]').first().text().trim() ||
-      $('meta[name="author"]').attr('content') || null;
+    const author = $('meta[name="author"]').attr('content') ||
+      $('[data-testid="author-link"], .post-meta__author, a[rel="author"], [class*="author-link"]').first().text().trim() ||
+      $('[class*="author"]').first().text().trim() ||
+      'Cointelegraph';
 
-    // Extract Featured Image from meta tag or header
+    // Extract Featured Image from OpenGraph / Twitter meta tags
     let featuredImage = $('meta[property="og:image"]').attr('content') ||
-      $('meta[name="twitter:image"]').attr('content') || null;
+      $('meta[name="twitter:image"]').attr('content') ||
+      $('meta[name="twitter:image:src"]').attr('content') ||
+      null;
 
-    // Remove unwanted noise elements
-    $('script, style, nav, footer, header, iframe, noscript, svg, form, button, .ad, .advertisement, .sidebar, [class*="ad-"]').remove();
-
-    const targetSelector = 'article, .post-content, .entry-content, .article-content, [class*="post-body"], [class*="StoryBody"], main';
-    const selectedElements = $(targetSelector);
-
-    let contentHtml = '';
-    if (selectedElements.length > 0) {
-      selectedElements.each((_, el) => {
-        contentHtml += $(el).html() + '\n\n';
-      });
-    } else {
-      contentHtml = $('body').html() || '';
+    // Target Cointelegraph main content container
+    // Cointelegraph uses .post-content, div.post-content, article, [class*="post-content_"]
+    let $container = $('.post-content, [class*="post-content_"], .post__content, article .post-content').first();
+    if ($container.length === 0) {
+      $container = $('article').first();
+    }
+    if ($container.length === 0) {
+      $container = $('[class*="post-body"], [class*="StoryBody"], main').first();
+    }
+    if ($container.length === 0) {
+      $container = $('body');
     }
 
-    // Extract all images
+    // Clone container to clean without destroying original
+    const $body = $container.clone();
+
+    // 1. Remove all noise, scripts, ads, social bars, and trackers
+    $body.find([
+      'script', 'style', 'noscript', 'iframe', 'svg', 'button', 'form', 'nav', 'header', 'footer',
+      '[data-testid="ad-slot"]', '.ad', '.advertisement', '[class*="ad-"]', '[class*="banner"]', '[class*="banner_"]',
+      '[class*="social"]', '[class*="share"]', '[class*="reaction"]', '[class*="post-actions"]', '[class*="actions_"]',
+      '[class*="related-articles"]', '[class*="related-posts"]', '[class*="related_"]', '[class*="recommended-"]',
+      '[class*="newsletter"]', '[class*="promo"]', '[class*="subscribe"]', '[class*="podcast"]', '[class*="telegram-widget"]',
+      '[class*="audio-player"]', '[class*="podcast-player"]', '[class*="player_"]',
+      '[class*="disclaimer"]', '[class*="disclosure"]', '[class*="terms"]',
+      '[class*="ticker"]', '[class*="coin-index"]', '[class*="price-index"]',
+      '[class*="author-block"]', '[class*="post-meta"]', '[class*="post-header"]'
+    ].join(', ')).remove();
+
+    // 2. Extract Lead / Key Takeaway paragraph if present
+    const leadText = $('.post__lead, [class*="post__lead"], [class*="post-lead"], [data-testid="post-lead"]').first().text().trim();
+
+    // 3. Extract Clean Paragraphs and Structure
+    const cleanParagraphs: string[] = [];
+    if (leadText && leadText.length > 25) {
+      cleanParagraphs.push(leadText);
+    }
+
+    $body.find('p, h2, h3, blockquote, ul').each((_, el) => {
+      const tagName = el.tagName?.toLowerCase();
+      const text = $(el).text().trim();
+
+      if (!text || text.length < 6) return;
+
+      // Filter out unwanted noise lines for Cointelegraph
+      const lower = text.toLowerCase();
+      if (
+        lower.startsWith('related:') ||
+        lower.startsWith('related :') ||
+        lower.startsWith('read more:') ||
+        lower.startsWith('magazine:') ||
+        lower.startsWith('disclaimer:') ||
+        lower.includes('produced in accordance with') ||
+        lower.includes('does not contain investment advice') ||
+        lower.includes('subscribe to our newsletter') ||
+        lower.includes('follow us on telegram') ||
+        lower.includes('follow us on x') ||
+        lower.includes('follow us on twitter') ||
+        lower.startsWith('source:') ||
+        lower.includes('all rights reserved')
+      ) {
+        return;
+      }
+
+      if (tagName === 'h2') {
+        cleanParagraphs.push(`## ${text}`);
+      } else if (tagName === 'h3') {
+        cleanParagraphs.push(`### ${text}`);
+      } else if (tagName === 'blockquote') {
+        cleanParagraphs.push(`> ${text}`);
+      } else if (tagName === 'ul') {
+        const items: string[] = [];
+        $(el).find('li').each((_, li) => {
+          const liText = $(li).text().trim();
+          if (liText && !liText.toLowerCase().includes('related')) {
+            items.push(`* ${liText}`);
+          }
+        });
+        if (items.length > 0) {
+          cleanParagraphs.push(items.join('\n'));
+        }
+      } else {
+        // Skip duplicate of leadText
+        if (leadText && text === leadText) return;
+        cleanParagraphs.push(text);
+      }
+    });
+
+    let fullText = cleanParagraphs.join('\n\n').trim();
+
+    // Fallback using Turndown if paragraph extraction was too short
+    const contentHtml = $body.html() || '';
+    if (fullText.length < 80 && contentHtml.length > 0) {
+      const turndownService = new TurndownService({
+        headingStyle: 'atx',
+        codeBlockStyle: 'fenced',
+      });
+      let markdown = turndownService.turndown(contentHtml);
+      markdown = sanitizeContent(markdown);
+      fullText = markdown.trim() || cleanText(contentHtml);
+    }
+
+    // 4. Extract all image references (Image URL and metadata only, no file storage)
     const images: Array<{ url: string; alt?: string; is_featured: number }> = [];
     const seenImageUrls = new Set<string>();
 
@@ -333,28 +431,29 @@ export async function scrapeFullArticle(env: Env, url: string): Promise<{
     $('img').each((_, el) => {
       const src = $(el).attr('src') || $(el).attr('data-src') || $(el).attr('srcset')?.split(' ')[0];
       const alt = $(el).attr('alt') || '';
-      if (src && src.startsWith('http') && !seenImageUrls.has(src) && !src.includes('avatar') && !src.includes('logo')) {
+      if (
+        src &&
+        src.startsWith('http') &&
+        !seenImageUrls.has(src) &&
+        !src.includes('avatar') &&
+        !src.includes('logo') &&
+        !src.includes('icon') &&
+        !src.includes('badge')
+      ) {
         seenImageUrls.add(src);
         images.push({
           url: src,
-          alt,
+          alt: alt.trim() || 'Article Image',
           is_featured: !featuredImage ? 1 : 0,
         });
         if (!featuredImage) featuredImage = src;
       }
     });
 
-    // Convert HTML to Markdown
-    const turndownService = new TurndownService({
-      headingStyle: 'atx',
-      codeBlockStyle: 'fenced',
-    });
-
-    let markdown = turndownService.turndown(contentHtml);
-    markdown = sanitizeContent(markdown);
+    console.log(`[Scraper] Extracted clean text (${fullText.length} chars, ${images.length} images) from ${url}`);
 
     return {
-      full_text: markdown.trim() || cleanText(contentHtml),
+      full_text: fullText,
       html_content: contentHtml,
       author: author || 'Cointelegraph',
       images,
@@ -367,7 +466,7 @@ export async function scrapeFullArticle(env: Env, url: string): Promise<{
 }
 
 /**
- * 3. Saves article metadata, full content, and images into D1 Primary (`news_db`)
+ * 3. Saves article metadata, full webpage text, and images into D1 Primary (`news_db`)
  */
 export async function saveArticle(
   env: Env,
@@ -391,59 +490,90 @@ export async function saveArticle(
 
   try {
     const featuredImg = article.featured_image || (images && images.length > 0 ? images[0].url : null);
+    const fullTextBody = (content.full_text || article.summary || article.title).trim();
+    const shortSummary = (article.summary || content.full_text.slice(0, 300) || article.title).trim();
 
-    // 1. Insert into articles (including featured_image)
+    // 1. Check if article already exists in DB by link or original_url
     let articleId: number | null = null;
-
     try {
-      const artRes = await env.DB.prepare(`
-        INSERT INTO articles (source_id, external_id, title, link, summary, featured_image, published_at, scraped_at, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), 'pending')
-      `).bind(
-        article.source_id || 1,
-        article.external_id || article.link,
-        article.title,
-        article.link,
-        article.summary || '',
-        featuredImg,
-        article.published_at
-      ).run();
+      const existing = await env.DB.prepare(
+        'SELECT id, content FROM articles WHERE link = ? OR original_url = ?'
+      ).bind(article.link, article.link).first<{ id: number; content?: string }>();
 
-      articleId = Number(artRes.meta?.last_row_id);
-    } catch {
-      // Fallback if table doesn't have external_id or uses original_url
+      if (existing) {
+        articleId = existing.id;
+        // Update content and featured_image if we now have full text
+        if (fullTextBody && fullTextBody.length > (existing.content?.length || 0)) {
+          try {
+            await env.DB.prepare(`
+              UPDATE articles 
+              SET content = ?, summary = ?, featured_image = COALESCE(?, featured_image)
+              WHERE id = ?
+            `).bind(fullTextBody, shortSummary, featuredImg, articleId).run();
+          } catch {
+            await env.DB.prepare(`
+              UPDATE articles 
+              SET content = ?, featured_image = COALESCE(?, featured_image)
+              WHERE id = ?
+            `).bind(fullTextBody, featuredImg, articleId).run();
+          }
+        }
+      }
+    } catch {}
+
+    // 2. Insert new article if not found
+    if (!articleId) {
       try {
-        const altRes = await env.DB.prepare(`
-          INSERT INTO articles (source_id, title, link, summary, featured_image, published_at, scraped_at, status)
-          VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 'pending')
+        const artRes = await env.DB.prepare(`
+          INSERT INTO articles (source_id, original_url, title, content, summary, featured_image, published_at, created_at, translation_status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), 'pending')
         `).bind(
           article.source_id || 1,
-          article.title,
           article.link,
-          article.summary || '',
+          article.title,
+          fullTextBody,
+          shortSummary,
           featuredImg,
           article.published_at
         ).run();
-        articleId = Number(altRes.meta?.last_row_id);
+
+        articleId = Number(artRes.meta?.last_row_id);
       } catch {
-        // Legacy schema fallback
-        const legRes = await env.DB.prepare(`
-          INSERT OR IGNORE INTO articles (source_id, original_url, title, content, featured_image, published_at, created_at, translation_status)
-          VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 'pending')
-        `).bind(
-          article.source_id || 1,
-          article.link,
-          article.title,
-          content.full_text || article.summary || '',
-          featuredImg,
-          article.published_at
-        ).run();
-        articleId = Number(legRes.meta?.last_row_id);
+        try {
+          const artRes = await env.DB.prepare(`
+            INSERT INTO articles (source_id, external_id, title, link, summary, content, featured_image, published_at, scraped_at, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'pending')
+          `).bind(
+            article.source_id || 1,
+            article.external_id || article.link,
+            article.title,
+            article.link,
+            shortSummary,
+            fullTextBody,
+            featuredImg,
+            article.published_at
+          ).run();
+
+          articleId = Number(artRes.meta?.last_row_id);
+        } catch {
+          // Legacy schema fallback
+          const legRes = await env.DB.prepare(`
+            INSERT OR IGNORE INTO articles (source_id, original_url, title, content, featured_image, published_at, created_at, translation_status)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 'pending')
+          `).bind(
+            article.source_id || 1,
+            article.link,
+            article.title,
+            fullTextBody,
+            featuredImg,
+            article.published_at
+          ).run();
+          articleId = Number(legRes.meta?.last_row_id);
+        }
       }
     }
 
     if (!articleId) {
-      // Try to select existing article ID by link
       const existing = await env.DB.prepare(
         'SELECT id FROM articles WHERE link = ? OR original_url = ?'
       ).bind(article.link, article.link).first<{ id: number }>();
@@ -452,22 +582,22 @@ export async function saveArticle(
 
     if (!articleId) return null;
 
-    // 2. Insert into article_contents
-    if (content.full_text) {
+    // 3. Insert or update article_contents table
+    if (fullTextBody) {
       try {
         await env.DB.prepare(`
           INSERT OR REPLACE INTO article_contents (article_id, full_text, html_content, author, scraped_at)
           VALUES (?, ?, ?, ?, datetime('now'))
         `).bind(
           articleId,
-          content.full_text,
+          fullTextBody,
           content.html_content || null,
           content.author || 'Cointelegraph'
         ).run();
       } catch {}
     }
 
-    // 3. Insert into article_images
+    // 4. Insert into article_images
     if (images.length > 0) {
       for (const img of images) {
         try {
@@ -484,7 +614,7 @@ export async function saveArticle(
       }
     }
 
-    // 4. Update KV cache
+    // 5. Update KV cache
     if (env.CACHE) {
       try {
         await env.CACHE.put(`rss_seen:${article.link}`, '1', { expirationTtl: 86400 * 7 }); // 7 days

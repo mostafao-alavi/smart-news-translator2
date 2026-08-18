@@ -601,13 +601,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <span>مدیریت و تزریق خودکار سکرت‌ها (Cloudflare Secrets Store)</span>
+                  <span>مدیریت سکرت‌ها و کنترل دسترسی (Cloudflare Secrets Store RBAC)</span>
                   <span className="bg-amber-500/20 text-amber-300 text-xs px-2.5 py-0.5 rounded-full font-mono font-medium border border-amber-500/30">
                     store_id: {secretsStatus?.secretsStoreBinding || 'MY_SEC_STORE'}
                   </span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  کلیدهای محرمانه ذخیره‌شده در کلادفلر (وردپرس، تلگرام، جمینای) به صورت هوشمند بر اساس شناسه Store بارگذاری و جای‌گذاری می‌شوند.
+                  کلیدهای محرمانه ذخیره‌شده در کلادفلر با رمزنگاری در سراسر دیتاسنترها و تفکیک دسترسی بر مبنای نقش (RBAC) مدیریت می‌شوند.
                 </p>
               </div>
             </div>
@@ -628,6 +628,32 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               <span>{secretsSyncMessage}</span>
             </div>
           )}
+
+          {/* Access Control & Scopes Requirements Notification */}
+          <div className="bg-slate-800/60 border border-slate-700/60 rounded-lg p-3 text-xs text-slate-300 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/60 pb-2">
+              <span className="font-bold text-amber-400 flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5" />
+                قوانین کنترل دسترسی و دامنه‌ها (Access Control & Scopes):
+              </span>
+              <div className="flex items-center gap-2">
+                <span className="bg-emerald-500/20 text-emerald-300 text-[10px] px-2 py-0.5 rounded font-mono border border-emerald-500/30">
+                  scope: "workers" الزامی
+                </span>
+                <span className="bg-blue-500/20 text-blue-300 text-[10px] px-2 py-0.5 rounded font-mono border border-blue-500/30">
+                  Account Secrets Store Edit
+                </span>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] text-slate-400">
+              <div>
+                • <strong className="text-slate-200">مجوز دپلوی و بایندینگ:</strong> برای دپلوی ورکر یا استقرار CI/CD توکن API باید دارای دسترسی <code className="text-amber-300">Account Secrets Store Edit</code> باشد.
+              </div>
+              <div>
+                • <strong className="text-slate-200">دامنه‌های سکرت (Scopes):</strong> در زمان ساخت یا ویرایش سکرت در کلادفلر، مقدار <code className="text-emerald-300">workers</code> باید در لیست scopes انتخاب شده باشد.
+              </div>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
             {/* Telegram Bot Token */}
