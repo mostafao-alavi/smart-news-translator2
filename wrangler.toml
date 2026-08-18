@@ -13,6 +13,11 @@ enabled = true
 directory = "./dist"
 not_found_handling = "single-page-application"
 
+# Cloudflare Secrets Store
+[[secrets_stores]]
+binding = "MY_SEC_STORE"
+store_id = "your-secrets-store-id"
+
 # D1 Primary — اخبار، محتوا، تصاویر
 [[d1_databases]]
 binding = "DB"
@@ -61,4 +66,5 @@ crons = ["*/15 * * * *"]
 WP_API_URL = "https://updaaate.ir/wp-json/wp/v2/"
 WP_POST_STATUS = "publish"
 WP_CATEGORY_ID = "3"
-TELEGRAM_CHAT_ID = "@updaaate_crypto"
+TELEGRAM_CHAT_ID = "@updaaate_crypto" # کانال تلگرام انتشار اخبار (کانال آپدیت)
+TELEGRAM_ADMIN_ID = "" # شناسه عددی تلگرام شما (Admin ID)

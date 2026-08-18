@@ -251,6 +251,7 @@ export interface Env {
   SCRAPE_QUEUE: Queue;
   TRANSLATE_QUEUE: Queue;
   CONTENT_BUCKET?: R2Bucket;
+  MY_SEC_STORE?: any; // Cloudflare Secrets Store binding
   GEMINI_API_KEY?: string;
   ADMIN_SECRET?: string;
   WP_API_URL?: string;
@@ -260,4 +261,5 @@ export interface Env {
   WP_CATEGORY_ID?: string;
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
+  TELEGRAM_ADMIN_ID?: string;
 }
