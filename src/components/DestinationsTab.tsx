@@ -679,8 +679,26 @@ export const DestinationsTab: React.FC<DestinationsTabProps> = ({
                 </div>
               </label>
 
+              {/* Photo + Caption & Inline Keyboards Feature Highlight */}
+              <div className="p-3.5 rounded-xl bg-gradient-to-r from-sky-50 via-indigo-50 to-emerald-50 border border-sky-200/90 text-xs text-sky-950 flex items-start gap-3">
+                <div className="p-2 bg-gradient-to-br from-sky-500 to-indigo-600 text-white rounded-xl shrink-0 mt-0.5 shadow-xs">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div className="space-y-1.5 flex-1">
+                  <div className="font-bold flex flex-wrap items-center justify-between gap-1.5 text-sky-950">
+                    <span className="text-sm">دکمه شیشه‌ای هوشمند (Inline Keyboard) + ارسال با عکس شاخص</span>
+                    <span className="bg-emerald-100 text-emerald-800 text-[10px] px-2.5 py-0.5 rounded-full font-bold border border-emerald-300">
+                      فعال و خودکار
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-sky-900 leading-relaxed">
+                    پست‌ها علاوه بر <b>تصویر شاخص و کپشن بهینه</b>، دارای <b>دکمه شیشه‌ای «🌐 مطالعه متن کامل در وب‌سایت»</b> با لینک مستقیم به همان پست در وردپرس و دکمه منبع اصلی هستند که نرخ تعامل، کلیک و ترافیک سایت را به بالاترین حد می‌رساند.
+                  </p>
+                </div>
+              </div>
+
               {/* Quick Send Test Box */}
-              <form onSubmit={handleSendCustomTg} className="pt-2">
+              <form onSubmit={handleSendCustomTg} className="pt-1">
                 <label className="block text-[11px] font-bold text-gray-700 mb-1">
                   ارسال سریع پیام تستی به کانال
                 </label>

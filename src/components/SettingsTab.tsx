@@ -162,7 +162,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [fileContent, setFileContent] = useState<string>('');
   const [loadingCode, setLoadingCode] = useState<boolean>(false);
 
-  // Cloudflare Secrets Store State
+  // Environment Variables & Secrets State
   const [secretsStatus, setSecretsStatus] = useState<any>(null);
   const [syncingSecrets, setSyncingSecrets] = useState<boolean>(false);
   const [secretsSyncMessage, setSecretsSyncMessage] = useState<string | null>(null);
@@ -195,7 +195,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       const json = await res.json();
       if (json.success) {
         setSecretsStatus(json.data.status);
-        setSecretsSyncMessage(json.data.message || 'کلیدها از Secrets Store با موفقیت همگام شدند.');
+        setSecretsSyncMessage(json.data.message || 'متغیرهای محیطی با موفقیت همگام شدند.');
         setTimeout(() => setSecretsSyncMessage(null), 5000);
       } else {
         setSecretsSyncMessage('خطا: ' + (json.error || 'ناشناخته'));
@@ -592,22 +592,22 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </div>
         </div>
 
-        {/* Cloudflare Secrets Store & Environment Security Panel */}
+        {/* Server Environment Variables & Security Panel */}
         <div className="bg-slate-900 text-white rounded-xl p-5 shadow-xs space-y-4 mt-4 border border-slate-800">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
             <div className="flex items-center gap-3">
-              <div className="bg-amber-500/20 text-amber-400 p-2.5 rounded-xl border border-amber-500/30">
+              <div className="bg-indigo-500/20 text-indigo-400 p-2.5 rounded-xl border border-indigo-500/30">
                 <ShieldCheck className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <span>مدیریت سکرت‌ها و کنترل دسترسی (Cloudflare Secrets Store RBAC)</span>
-                  <span className="bg-amber-500/20 text-amber-300 text-xs px-2.5 py-0.5 rounded-full font-mono font-medium border border-amber-500/30">
-                    store_id: {secretsStatus?.secretsStoreBinding || 'MY_SEC_STORE'}
+                  <span>مدیریت متغیرهای محیطی و کلیدهای امنیتی سرور</span>
+                  <span className="bg-indigo-500/20 text-indigo-300 text-xs px-2.5 py-0.5 rounded-full font-mono font-medium border border-indigo-500/30">
+                    Environment Variables
                   </span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  کلیدهای محرمانه ذخیره‌شده در کلادفلر با رمزنگاری در سراسر دیتاسنترها و تفکیک دسترسی بر مبنای نقش (RBAC) مدیریت می‌شوند.
+                  کلیدهای محرمانه و متغیرهای دسترسی مستقیماً از طریق فایل تنظیمات محیطی (.env) و سرور مدیریت می‌شوند.
                 </p>
               </div>
             </div>
@@ -615,10 +615,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             <button
               onClick={handleSyncSecrets}
               disabled={syncingSecrets}
-              className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs px-3.5 py-2 rounded-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 shrink-0"
+              className="bg-indigo-500 hover:bg-indigo-600 text-white font-bold text-xs px-3.5 py-2 rounded-lg transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50 shrink-0"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${syncingSecrets ? 'animate-spin' : ''}`} />
-              <span>{syncingSecrets ? 'در حال بازخوانی سکرت‌ها...' : 'همگام‌سازی و خواندن سکرت‌ها'}</span>
+              <span>{syncingSecrets ? 'در حال بازخوانی متغیرها...' : 'همگام‌سازی و خواندن متغیرها'}</span>
             </button>
           </div>
 
@@ -629,28 +629,25 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </div>
           )}
 
-          {/* Access Control & Scopes Requirements Notification */}
+          {/* Security & Configuration Notice */}
           <div className="bg-slate-800/60 border border-slate-700/60 rounded-lg p-3 text-xs text-slate-300 space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-700/60 pb-2">
-              <span className="font-bold text-amber-400 flex items-center gap-1.5">
+              <span className="font-bold text-indigo-400 flex items-center gap-1.5">
                 <Lock className="w-3.5 h-3.5" />
-                قوانین کنترل دسترسی و دامنه‌ها (Access Control & Scopes):
+                وضعیت پیکربندی متغیرهای امنیتی:
               </span>
               <div className="flex items-center gap-2">
                 <span className="bg-emerald-500/20 text-emerald-300 text-[10px] px-2 py-0.5 rounded font-mono border border-emerald-500/30">
-                  scope: "workers" الزامی
-                </span>
-                <span className="bg-blue-500/20 text-blue-300 text-[10px] px-2 py-0.5 rounded font-mono border border-blue-500/30">
-                  Account Secrets Store Edit
+                  Standard Environment
                 </span>
               </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px] text-slate-400">
               <div>
-                • <strong className="text-slate-200">مجوز دپلوی و بایندینگ:</strong> برای دپلوی ورکر یا استقرار CI/CD توکن API باید دارای دسترسی <code className="text-amber-300">Account Secrets Store Edit</code> باشد.
+                • <strong className="text-slate-200">مدیریت کلیدها:</strong> کلیه کلیدها و توکن‌ها از طریق متغیرهای سیستمی و فایل <code className="text-indigo-300">.env</code> تأمین می‌شوند.
               </div>
               <div>
-                • <strong className="text-slate-200">دامنه‌های سکرت (Scopes):</strong> در زمان ساخت یا ویرایش سکرت در کلادفلر، مقدار <code className="text-emerald-300">workers</code> باید در لیست scopes انتخاب شده باشد.
+                • <strong className="text-slate-200">امنیت سرور:</strong> اطلاعات حساس هیچ‌گاه در معرض فرانت‌اند قرار نگرفته و به صورت ماسک‌شده در گزارش‌ها منعکس می‌شوند.
               </div>
             </div>
           </div>

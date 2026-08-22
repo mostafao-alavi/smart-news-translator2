@@ -217,8 +217,8 @@ export async function distributeToWordPress(
   const categoryId = Number(await getSecret(env, 'WP_CATEGORY_ID', '3')) || 3;
 
   if (!username || !password) {
-    console.warn('[WordPress] Skipping live publish: WP_USERNAME or WP_APPLICATION_PASSWORD not set in Cloudflare Secrets Store / Env');
-    return { ok: false, error: 'اطلاعات احراز هویت وردپرس (WP_USERNAME یا WP_APPLICATION_PASSWORD) در Cloudflare Secrets Store یا متغیرهای محیطی تنظیم نشده است.' };
+    console.warn('[WordPress] Skipping live publish: WP_USERNAME or WP_APPLICATION_PASSWORD not set in environment variables');
+    return { ok: false, error: 'اطلاعات احراز هویت وردپرس (WP_USERNAME یا WP_APPLICATION_PASSWORD) در متغیرهای محیطی سرور تنظیم نشده است.' };
   }
 
   const postsEndpoint = normalizeWpApiEndpoint(apiUrl, 'posts');

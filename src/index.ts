@@ -16,7 +16,7 @@ app.use('*', async (c, next) => {
     try {
       await hydrateEnvWithSecrets(c.env);
     } catch (e: any) {
-      console.warn('[Secrets Store] Middleware hydration warning:', e?.message || e);
+      console.warn('[Environment] Middleware hydration warning:', e?.message || e);
     }
   }
   await next();
@@ -69,11 +69,11 @@ app.get('*', async (c) => {
 export default {
   fetch: app.fetch,
 
-  // Scheduled event handler for Cloudflare Cron Triggers (crons = ["*/15 * * * *"])
+  // Scheduled event handler for Cron Triggers (crons = ["*/15 * * * *"])
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     console.log(`[Cron] 15-Minute trigger executed at ${new Date().toISOString()} (Cron: ${event.cron})`);
 
-    // Ensure secrets are hydrated from Cloudflare Secrets Store
+    // Ensure secrets are hydrated from environment variables
     try {
       await hydrateEnvWithSecrets(env);
     } catch {}
@@ -140,11 +140,11 @@ export default {
     );
   },
 
-  // Queue consumer handler for Cloudflare Queues
+  // Queue consumer handler for background queues
   async queue(batch: MessageBatch<any>, env: Env): Promise<void> {
     console.log(`[Queue] Processing ${batch.messages.length} messages for queue: ${batch.queue}`);
 
-    // Ensure secrets are hydrated from Cloudflare Secrets Store
+    // Ensure secrets are hydrated from environment variables
     try {
       await hydrateEnvWithSecrets(env);
     } catch {}

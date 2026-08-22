@@ -241,51 +241,16 @@ export interface ExecutionContext {
   passThroughOnException(): void;
 }
 
-export type CFSecretScope = 'workers' | 'ai_gateway' | 'dex' | 'access' | 'containers' | 'websearch';
-export type CFSecretStatus = 'pending' | 'active' | 'deleted';
-
-export interface CFSecretStore {
-  id: string;
-  name: string;
-  created: string;
-  modified: string;
-  account_id?: string;
-}
-
-export interface CFSecret {
-  id: string;
-  store_id: string;
-  name: string;
-  status: CFSecretStatus;
-  comment?: string;
-  scopes: CFSecretScope[];
-  created: string;
-  modified: string;
-}
-
-export interface CFSecretsQuota {
-  quota: number;
-  usage: number;
-}
-
-export interface SecretsStore {
-  get(secretName: string): Promise<string | { value: string; [key: string]: any } | null> | string | null;
-  [key: string]: any;
-}
-
-// Cloudflare Workers Environment bindings
+// Environment variables & service bindings
 export interface Env {
   ASSETS?: { fetch: (request: Request | string, init?: RequestInit) => Promise<Response> };
   DB: D1Database;
   DB_ARCHIVE?: D1Database;
   CACHE?: KVNamespace;
-  AI: any; // برای دسترسی به Workers AI
-  SCRAPE_QUEUE: Queue;
-  TRANSLATE_QUEUE: Queue;
+  AI?: any;
+  SCRAPE_QUEUE?: Queue;
+  TRANSLATE_QUEUE?: Queue;
   CONTENT_BUCKET?: R2Bucket;
-  MY_SEC_STORE?: SecretsStore | any; // Cloudflare Secrets Store binding
-  SECRETS?: SecretsStore | any;
-  SECRETS_STORE?: SecretsStore | any;
   GEMINI_API_KEY?: string;
   ADMIN_SECRET?: string;
   WP_API_URL?: string;

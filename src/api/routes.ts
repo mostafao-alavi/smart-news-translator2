@@ -19,7 +19,7 @@ api.use('*', async (c, next) => {
     try {
       await hydrateEnvWithSecrets(c.env);
     } catch (e: any) {
-      console.warn('[Secrets Store] Route hydration notice:', e?.message || e);
+      console.warn('[Environment] Route hydration notice:', e?.message || e);
     }
     if (c.env.DB && !tablesEnsured) {
       try {
@@ -2192,7 +2192,7 @@ api.post('/telegram/test-connection', async (c) => {
 api.post('/telegram/send-news', async (c) => {
   try {
     const body = await c.req.json();
-    const { title, content, tags, source_url, chat_id, bot_token } = body;
+    const { title, content, tags, source_url, chat_id, bot_token, image_url, imageUrl } = body;
 
     if (!title || !content) {
       return c.json({
@@ -2212,6 +2212,7 @@ api.post('/telegram/send-news', async (c) => {
       content,
       tags: Array.isArray(tags) ? tags : (typeof tags === 'string' ? JSON.parse(tags) : []),
       sourceUrl: source_url,
+      imageUrl: image_url || imageUrl || null,
     });
 
     return c.json({
@@ -2388,6 +2389,7 @@ api.post('/telegram/send/:articleId', async (c) => {
       summary: translation.translated_summary,
       tags: tagsList,
       source_url: article.link || article.original_url,
+      image_url: article.featured_image || body.image_url || null,
     });
 
     if (!result.ok) {
@@ -2806,6 +2808,7 @@ api.post('/news/:id/distribute', async (c) => {
           summary: translation.translated_summary,
           tags: tagsList,
           source_url: article.link || article.original_url,
+          image_url: article.featured_image || null,
         });
 
         if (tgRes.ok) {
@@ -3213,7 +3216,7 @@ api.post('/d1/query', async (c) => {
 });
 
 
-// GET /api/secrets/status - View Cloudflare Secrets Store status and loaded keys
+// GET /api/secrets/status - View environment variables and secrets status
 api.get('/secrets/status', async (c) => {
   try {
     const status = await getSecretsStatus(c.env);
@@ -3223,7 +3226,7 @@ api.get('/secrets/status', async (c) => {
   }
 });
 
-// POST /api/secrets/sync - Force re-hydrate secrets from Cloudflare Secrets Store
+// POST /api/secrets/sync - Re-hydrate and reload environment variables
 api.post('/secrets/sync', async (c) => {
   try {
     await hydrateEnvWithSecrets(c.env);
@@ -3231,62 +3234,10 @@ api.post('/secrets/sync', async (c) => {
     return c.json({
       success: true,
       data: {
-        message: 'همگام‌سازی و خواندن سکرت‌ها از Cloudflare Secrets Store با موفقیت انجام شد.',
+        message: 'همگام‌سازی و بارگذاری متغیرهای محیطی با موفقیت انجام شد.',
         status
       },
       error: null
-    }, 200);
-  } catch (err: any) {
-    return c.json({ success: false, data: null, error: err.message }, 500);
-  }
-});
-
-// POST /api/secrets/cf-api-inspect - Inspect Account Secrets Stores, Quota & Scopes via Cloudflare API v4
-api.post('/secrets/cf-api-inspect', async (c) => {
-  try {
-    const body: { account_id?: string; api_token?: string; store_id?: string } = await c.req.json().catch(() => ({}));
-    const accountId = body.account_id || (c.env as any).CLOUDFLARE_ACCOUNT_ID || '';
-    const apiToken = body.api_token || (c.env as any).CLOUDFLARE_API_TOKEN || '';
-    const storeId = body.store_id || '';
-
-    if (!accountId || !apiToken) {
-      return c.json({
-        success: false,
-        data: null,
-        error: 'لطفاً شناسه حساب (Account ID) و توکن API با دسترسی Account Secrets Store Read یا Edit را وارد نمایید.',
-      }, 400);
-    }
-
-    const { listCloudflareStores, listStoreSecrets, getSecretsStoreQuota } = await import('../utils/secrets');
-
-    // 1. Fetch stores
-    const storesRes = await listCloudflareStores(accountId, apiToken);
-    
-    // 2. Fetch quota
-    const quotaRes = await getSecretsStoreQuota(accountId, apiToken);
-
-    // 3. Fetch secrets for selected store or first store
-    let secretsRes: any = null;
-    const targetStoreId = storeId || (storesRes.result && storesRes.result[0]?.id);
-    if (targetStoreId) {
-      secretsRes = await listStoreSecrets(accountId, targetStoreId, apiToken);
-    }
-
-    return c.json({
-      success: true,
-      data: {
-        stores: storesRes.result || [],
-        quota: quotaRes.result?.secrets || null,
-        selectedStoreId: targetStoreId || null,
-        secrets: secretsRes?.result || [],
-        hasWorkersScope: (secretsRes?.result || []).map((s: any) => ({
-          name: s.name,
-          scopes: s.scopes,
-          is_workers_ready: Array.isArray(s.scopes) && s.scopes.includes('workers'),
-        })),
-        api_messages: [...(storesRes.messages || []), ...(quotaRes.messages || [])],
-      },
-      error: storesRes.errors?.[0]?.message || quotaRes.errors?.[0]?.message || null,
     }, 200);
   } catch (err: any) {
     return c.json({ success: false, data: null, error: err.message }, 500);
