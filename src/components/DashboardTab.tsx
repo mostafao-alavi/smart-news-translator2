@@ -19,14 +19,10 @@ import {
   BarChart3,
   ExternalLink,
   Activity,
-  Check,
-  Eye,
-  Columns2
+  Check
 } from 'lucide-react';
 import { StatsOverview } from './StatsOverview';
 import { DatabaseErrorFallback } from './DatabaseErrorFallback';
-import { AutopilotMasterSwitch } from './AutopilotMasterSwitch';
-import { ArticleDualViewModal } from './ArticleDualViewModal';
 
 interface DashboardTabProps {
   stats: StatsData | null;
@@ -71,13 +67,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
   const [distributedIds, setDistributedIds] = useState<number[]>([]);
   const [recentLogs, setRecentLogs] = useState<SystemEventLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState<boolean>(false);
-  const [modalArticle, setModalArticle] = useState<JoinedArticleNews | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
-
-  const handleOpenArticleModal = (article: JoinedArticleNews) => {
-    setModalArticle(article);
-    setIsModalOpen(true);
-  };
 
   // Fetch real system events for live audit widget
   const fetchLogs = async () => {
@@ -152,9 +141,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Master Autonomous Autopilot Switch Panel */}
-      <AutopilotMasterSwitch onRefreshAll={onRefreshAll || onRetryStats} />
-
       {/* Database Error Fallback if stats fail to load */}
       {statsError ? (
         <DatabaseErrorFallback
@@ -292,48 +278,29 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   return (
                     <div
                       key={item.id}
-                      className="p-3 bg-gray-50/80 hover:bg-amber-50/50 rounded-xl border border-gray-200/80 hover:border-amber-200 flex items-center justify-between gap-3 transition-colors group cursor-pointer"
-                      onClick={() => handleOpenArticleModal(item)}
+                      className="p-3 bg-gray-50/80 hover:bg-gray-100/80 rounded-xl border border-gray-200/80 flex items-center justify-between gap-3 transition-colors"
                     >
                       <div className="flex-1 min-w-0">
-                        <h4 className="text-xs font-bold text-gray-900 group-hover:text-amber-900 truncate dir-ltr text-right">
-                          {item.title}
-                        </h4>
+                        <h4 className="text-xs font-bold text-gray-900 truncate dir-ltr text-right">{item.title}</h4>
                         <div className="flex items-center gap-2 mt-1 text-[10px] text-gray-500">
                           <span className="font-semibold text-orange-600">{item.source_name || 'RSS Feed'}</span>
                           <span>•</span>
                           <span>{itemTime ? new Date(itemTime).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }) : 'امروز'}</span>
-                          <span>•</span>
-                          <span className="text-amber-600 font-bold flex items-center gap-0.5">
-                            <Eye className="w-3 h-3" />
-                            <span>مشاهده متن اصلی و ترجمه</span>
-                          </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => handleOpenArticleModal(item)}
-                          className="bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 text-[11px] px-2.5 py-1.5 rounded-lg font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
-                          title="مشاهده متن کامل انگلیسی و ترجمه فارسی"
-                        >
-                          <Columns2 className="w-3 h-3 text-indigo-600" />
-                          <span className="hidden sm:inline">متن اصلی و ترجمه</span>
-                        </button>
-
-                        <button
-                          onClick={() => handleSingleTranslate(item.id)}
-                          disabled={isTranslating}
-                          className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-[11px] px-3 py-1.5 rounded-lg font-bold transition-all shadow-2xs shrink-0 flex items-center gap-1.5 cursor-pointer"
-                        >
-                          {isTranslating ? (
-                            <RefreshCw className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <Sparkles className="w-3 h-3" />
-                          )}
-                          <span>{isTranslating ? 'در حال ترجمه...' : 'ترجمه AI'}</span>
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => handleSingleTranslate(item.id)}
+                        disabled={isTranslating}
+                        className="bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-[11px] px-3 py-1.5 rounded-lg font-bold transition-all shadow-2xs shrink-0 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        {isTranslating ? (
+                          <RefreshCw className="w-3 h-3 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-3 h-3" />
+                        )}
+                        <span>{isTranslating ? 'در حال ترجمه...' : 'ترجمه AI'}</span>
+                      </button>
                     </div>
                   );
                 })}
@@ -376,11 +343,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                   return (
                     <div
                       key={item.id}
-                      className="p-3 bg-emerald-50/40 hover:bg-emerald-50/80 rounded-xl border border-emerald-100 flex items-center justify-between gap-3 transition-colors group cursor-pointer"
-                      onClick={() => handleOpenArticleModal(item)}
+                      className="p-3 bg-emerald-50/40 hover:bg-emerald-50/80 rounded-xl border border-emerald-100 flex items-center justify-between gap-3 transition-colors"
                     >
                       <div className="flex-1 min-w-0">
-                        <h4 className="text-xs font-bold text-gray-900 group-hover:text-emerald-900 truncate">{item.translated_title}</h4>
+                        <h4 className="text-xs font-bold text-gray-900 truncate">{item.translated_title}</h4>
                         <div className="flex items-center gap-2 mt-1">
                           <p className="text-[10px] text-gray-500 truncate font-mono dir-ltr text-right">{item.title}</p>
                           {isWpPublished && (
@@ -396,16 +362,7 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => handleOpenArticleModal(item)}
-                          className="bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 text-[11px] px-2.5 py-1.5 rounded-lg font-bold transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
-                          title="مشاهده متن کامل و مقایسه ترجمه"
-                        >
-                          <Eye className="w-3 h-3 text-emerald-600" />
-                          <span className="hidden sm:inline">مشاهده کامل</span>
-                        </button>
-
+                      <div className="flex items-center gap-2 shrink-0">
                         {isDistributed ? (
                           <span className="text-[10px] bg-emerald-100 text-emerald-800 px-2.5 py-1.5 rounded-lg font-bold flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3 text-emerald-600" />
@@ -457,11 +414,10 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                 {publishedNews.slice(0, 3).map((item) => (
                   <div
                     key={item.id}
-                    className="p-3 bg-purple-50/30 hover:bg-purple-50/60 rounded-xl border border-purple-100 flex items-center justify-between gap-3 transition-colors group cursor-pointer"
-                    onClick={() => handleOpenArticleModal(item)}
+                    className="p-3 bg-purple-50/30 hover:bg-purple-50/60 rounded-xl border border-purple-100 flex items-center justify-between gap-3 transition-colors"
                   >
                     <div className="flex-1 min-w-0">
-                      <h4 className="text-xs font-bold text-gray-900 group-hover:text-purple-900 truncate">{item.translated_title || item.title}</h4>
+                      <h4 className="text-xs font-bold text-gray-900 truncate">{item.translated_title || item.title}</h4>
                       <div className="flex items-center gap-2 mt-1">
                         {item.wp_sync_status === 'published' && (
                           <span className="text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded-md font-bold flex items-center gap-1">
@@ -478,22 +434,13 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        onClick={() => handleOpenArticleModal(item)}
-                        className="text-gray-500 hover:text-gray-900 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-                        title="مشاهده متن اصلی و ترجمه شده"
-                      >
-                        <Eye className="w-4 h-4 text-purple-600" />
-                      </button>
-                      <button
-                        onClick={() => onNavigateTab('content-desk')}
-                        className="text-gray-500 hover:text-gray-900 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-                        title="مشاهده در میز تحریریه"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => onNavigateTab('content-desk')}
+                      className="text-gray-500 hover:text-gray-900 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+                      title="مشاهده در میز تحریریه"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -631,16 +578,6 @@ export const DashboardTab: React.FC<DashboardTabProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Dual-View Article Modal (Original Untranslated & Translated Full Text) */}
-      <ArticleDualViewModal
-        article={modalArticle}
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onTranslate={onTranslateArticle}
-        onDistribute={handleInstantDistribute}
-        onRefresh={onRefreshAll || onRetryStats}
-      />
     </div>
   );
 };
