@@ -581,75 +581,77 @@ export async function extractWithCloudflareHTMLRewriter(
     let currentQuoteText = '';
     let currentListItemText = '';
 
-    let titleExtracted = false;
-    let authorExtracted = false;
-    let leadExtracted = false;
+    let h1Title = '';
+    let ogTitle = '';
+    let docTitle = '';
+    let bylineAuthor = '';
+    let metaAuthor = '';
 
     const rewriter = new (globalThis as any).HTMLRewriter()
-      // Title
-      .on(profile.selectors.title, {
-        element(el: any) {
-          const val = el.getAttribute('content');
-          if (val && !title) {
-            title = cleanRawText(val);
-            titleExtracted = true;
-          }
+      // Canonical H1 Title (Priority 1)
+      .on('h1, [data-testid="post__title"], [data-testid="post-title"], .post__title', {
+        element() {
+          h1Title = '';
         },
         text(textChunk: any) {
-          if (!titleExtracted) {
-            title += textChunk.text;
-            if (textChunk.lastInTextNode) {
-              titleExtracted = true;
-            }
+          h1Title += textChunk.text;
+        }
+      })
+      // Meta OG Title (Fallback 1)
+      .on('meta[property="og:title"], meta[name="twitter:title"], meta[name="title"]', {
+        element(el: any) {
+          const val = el.getAttribute('content');
+          if (val && !ogTitle) {
+            ogTitle = cleanRawText(val);
           }
         }
       })
+      // Document Title (Fallback 2)
       .on('title', {
-        text(textChunk: any) {
-          if (!title) {
-            title += textChunk.text;
-          }
-        }
-      })
-      // Author
-      .on(profile.selectors.author, {
-        element(el: any) {
-          const val = el.getAttribute('content');
-          if (val && !author) {
-            author = cleanRawText(val);
-            authorExtracted = true;
-          }
+        element() {
+          docTitle = '';
         },
         text(textChunk: any) {
-          if (!authorExtracted) {
-            author += textChunk.text;
-            if (textChunk.lastInTextNode) {
-              authorExtracted = true;
-            }
+          docTitle += textChunk.text;
+        }
+      })
+      // Byline Author (Priority 1)
+      .on('[data-testid="post-byline__author"], .post-byline__author, [rel="author"], [data-testid="author-name"]', {
+        element() {
+          bylineAuthor = '';
+        },
+        text(textChunk: any) {
+          bylineAuthor += textChunk.text;
+        }
+      })
+      // Meta Author (Fallback 1)
+      .on('meta[name="author"], meta[property="article:author"], meta[name="twitter:creator"]', {
+        element(el: any) {
+          const val = el.getAttribute('content');
+          if (val && !metaAuthor) {
+            metaAuthor = cleanRawText(val);
           }
         }
       })
-      // Featured Image
-      .on(profile.selectors.featuredImage, {
+      // Featured Image (Cover)
+      .on('meta[property="og:image"], [data-testid="post-cover__image"], img.post-cover__image, .post-cover img', {
         element(el: any) {
-          const src = el.getAttribute('src') || el.getAttribute('content');
-          if (src && !featuredImage) featuredImage = src;
+          const src = el.getAttribute('src') || el.getAttribute('content') || el.getAttribute('data-src');
+          if (src && src.startsWith('http') && !featuredImage) {
+            featuredImage = src;
+            if (!images.some(img => img.url === src)) {
+              images.unshift({ url: src, alt: 'Featured Cover', is_featured: 1 });
+            }
+          }
         }
       })
       // Lead / Key Takeaways
       .on(profile.selectors.lead, {
         element() {
-          if (!leadExtracted) {
-            leadText = '';
-          }
+          leadText = '';
         },
         text(textChunk: any) {
-          if (!leadExtracted) {
-            leadText += textChunk.text;
-            if (textChunk.lastInTextNode) {
-              leadExtracted = true;
-            }
-          }
+          leadText += textChunk.text;
         }
       });
 
@@ -750,13 +752,13 @@ export async function extractWithCloudflareHTMLRewriter(
     }
 
     if (profile.preserveLists) {
-      rewriter.on(`${primaryContainer} li, .ct-prose li`, {
+      rewriter.on(`${primaryContainer} li, .ct-prose li, [data-testid="post-tags"] li, [data-testid="post-tag"]`, {
         element(el: any) {
           activeType = 'li';
           currentListItemText = '';
           el.onEndTag(() => {
             const cleanLi = cleanRawText(currentListItemText);
-            if (cleanLi.length >= 5 && !isNoiseLine(cleanLi, profile.noiseTextPatterns) && !isCutOffMarker(cleanLi, profile.cutOffMarkers)) {
+            if (cleanLi.length >= 2 && !isNoiseLine(cleanLi, profile.noiseTextPatterns) && !isCutOffMarker(cleanLi, profile.cutOffMarkers)) {
               const formatted = `* ${cleanLi}`;
               if (!paragraphs.includes(formatted)) {
                 paragraphs.push(formatted);
@@ -794,6 +796,9 @@ export async function extractWithCloudflareHTMLRewriter(
     const transformed = rewriter.transform(response);
     await transformed.text(); // Consume stream to trigger all element handlers
 
+    const finalTitle = cleanRawText(h1Title) || cleanRawText(ogTitle) || cleanRawText(docTitle) || null;
+    const finalAuthor = cleanRawText(bylineAuthor) || cleanRawText(metaAuthor) || profile.name;
+
     // Format full clean text
     const cleanLead = cleanRawText(leadText);
     const allTextBlocks = cleanLead && cleanLead.length > 20 && !paragraphs.includes(cleanLead)
@@ -804,8 +809,8 @@ export async function extractWithCloudflareHTMLRewriter(
 
     return {
       url,
-      title: title ? cleanRawText(title) : null,
-      author: author ? cleanRawText(author) : profile.name,
+      title: finalTitle,
+      author: finalAuthor,
       featured_image: featuredImage || null,
       lead_text: cleanLead || null,
       full_text: fullText,
