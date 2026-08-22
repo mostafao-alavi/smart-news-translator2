@@ -41,11 +41,13 @@ function escapeTelegramHtml(text: string): string {
 
 /**
  * Format a news item into an attractive, high-converting Telegram HTML post or photo caption
+ * strictly linking only to our WordPress website (Updaaate), never external sources.
  */
 export function formatTelegramMessage(payload: {
   title: string;
   content: string;
   tags?: string[] | string | null;
+  sitePostUrl?: string;
   sourceUrl?: string;
   channelHandle?: string;
   isPhotoCaption?: boolean;
@@ -96,15 +98,17 @@ export function formatTelegramMessage(payload: {
     `✍️ ${escapeTelegramHtml(cleanContent)}\n`
   ];
 
-  if (payload.sourceUrl && (payload.sourceUrl.startsWith('http://') || payload.sourceUrl.startsWith('https://'))) {
-    parts.push(`🌐 <a href="${escapeTelegramHtml(payload.sourceUrl)}">مطالعه متن کامل در وب‌سایت</a>\n`);
+  // Only link to our WordPress website (Updaaate), never external source URLs
+  const siteUrl = payload.sitePostUrl;
+  if (siteUrl && (siteUrl.startsWith('http://') || siteUrl.startsWith('https://'))) {
+    parts.push(`🌐 <a href="${escapeTelegramHtml(siteUrl)}">مطالعه متن کامل در وب‌سایت آپدیت</a>\n`);
   }
 
   if (tagsFormatted) {
     parts.push(`🏷 ${tagsFormatted}\n`);
   }
 
-  parts.push(`📢 <b>عضویت در کانال:</b> ${channel} | <i>هزاردستان</i>`);
+  parts.push(`📢 <b>عضویت در کانال:</b> ${channel} | <i>رسانه آپدیت</i>`);
 
   return parts.join('\n');
 }
@@ -224,7 +228,7 @@ export async function sendTelegramMessage(options: {
 }
 
 /**
- * Builds an attractive inline keyboard with "مطالعه متن کامل در وب‌سایت" and optional source links
+ * Builds an attractive inline keyboard strictly with "مطالعه کامل خبر در وب‌سایت آپدیت"
  */
 export function buildTelegramInlineKeyboard(options: {
   sitePostUrl?: string | null;
@@ -237,27 +241,15 @@ export function buildTelegramInlineKeyboard(options: {
 
   const keyboard: TelegramInlineButton[][] = [];
 
-  // Primary Action Button: "مطالعه متن کامل در وب‌سایت"
-  const targetSiteUrl = options.sitePostUrl || options.sourceUrl;
+  // Exclusive Action Button: "🌐 مطالعه کامل خبر در وب‌سایت آپدیت"
+  const targetSiteUrl = options.sitePostUrl;
   if (targetSiteUrl && (targetSiteUrl.startsWith('http://') || targetSiteUrl.startsWith('https://'))) {
     keyboard.push([
       {
-        text: '🌐 مطالعه متن کامل در وب‌سایت',
+        text: '🌐 مطالعه کامل خبر در وب‌سایت آپدیت',
         url: targetSiteUrl,
       }
     ]);
-  }
-
-  // Secondary Row (if both site URL and original external source exist and differ)
-  if (options.sitePostUrl && options.sourceUrl && options.sitePostUrl !== options.sourceUrl) {
-    if (options.sourceUrl.startsWith('http://') || options.sourceUrl.startsWith('https://')) {
-      keyboard.push([
-        {
-          text: '📑 منبع اصلی خبر',
-          url: options.sourceUrl,
-        }
-      ]);
-    }
   }
 
   return keyboard.length > 0 ? { inline_keyboard: keyboard } : undefined;
@@ -272,10 +264,9 @@ export async function sendNewsToTelegram(payload: TelegramNewsPayload): Promise<
   const token = payload.botToken;
   const chatId = payload.chatId || '@updaaate_crypto';
 
-  // Build inline keyboard (e.g. "مطالعه متن کامل در وب‌سایت")
+  // Build inline keyboard strictly for the WordPress website
   const replyMarkup = payload.replyMarkup || buildTelegramInlineKeyboard({
     sitePostUrl: payload.sitePostUrl,
-    sourceUrl: payload.sourceUrl,
   });
 
   // Check if image URL is valid and suitable for Telegram Photo API
@@ -289,12 +280,12 @@ export async function sendNewsToTelegram(payload: TelegramNewsPayload): Promise<
       title: payload.title,
       content: payload.content,
       tags: payload.tags,
-      sourceUrl: replyMarkup ? undefined : payload.sourceUrl, // If inline button exists, no need to duplicate link inside caption
+      sitePostUrl: replyMarkup ? undefined : payload.sitePostUrl,
       channelHandle: chatId,
       isPhotoCaption: true,
     });
 
-    console.log(`[Telegram] Dispatching photo post to ${chatId} (Image: ${payload.imageUrl}, HasButton: ${!!replyMarkup})`);
+    console.log(`[Telegram] Dispatching photo post to ${chatId} (Image: ${payload.imageUrl}, HasWPButton: ${!!replyMarkup})`);
     const photoResult = await sendTelegramPhoto({
       token,
       chatId,
@@ -316,7 +307,7 @@ export async function sendNewsToTelegram(payload: TelegramNewsPayload): Promise<
     title: payload.title,
     content: payload.content,
     tags: payload.tags,
-    sourceUrl: replyMarkup ? undefined : payload.sourceUrl,
+    sitePostUrl: replyMarkup ? undefined : payload.sitePostUrl,
     channelHandle: chatId,
     isPhotoCaption: false,
   });
@@ -331,7 +322,8 @@ export async function sendNewsToTelegram(payload: TelegramNewsPayload): Promise<
 }
 
 /**
- * Distribute a translated article to Telegram channel and log result to DB Archive
+ * Distribute a translated article to Telegram channel and log result to DB Archive.
+ * WordPress-First Rule: Ensures article is published to WordPress site first before sending to Telegram.
  */
 export async function distributeToTelegram(
   env: Env,
@@ -356,59 +348,87 @@ export async function distributeToTelegram(
     return { ok: false, description: 'Telegram bot token not set in environment variables' };
   }
 
-  // Resolve article image and WordPress website URL from payload or database
+  // 1. Resolve article image from payload or database
   let resolvedImageUrl = translated.image_url || translated.featured_image || null;
   let resolvedSitePostUrl = translated.site_post_url || null;
 
   const targetDb = env.DB_ARCHIVE || env.DB;
 
-  if (targetDb) {
+  // 2. Check if already published to WordPress
+  if (!resolvedSitePostUrl && targetDb) {
     try {
-      // Look up if this article has already been published to WordPress to get the direct post URL
       const wpDistRow: any = await targetDb.prepare(
         "SELECT platform_url, platform_post_id FROM distributions WHERE article_id = ? AND platform = 'wordpress' AND status = 'published' ORDER BY id DESC LIMIT 1"
       ).bind(translated.article_id).first();
 
       if (wpDistRow?.platform_url) {
         resolvedSitePostUrl = wpDistRow.platform_url;
+      } else if (wpDistRow?.platform_post_id) {
+        resolvedSitePostUrl = `https://updaaate.ir/?p=${wpDistRow.platform_post_id}`;
       }
     } catch {}
   }
 
-  if (!resolvedImageUrl || !resolvedSitePostUrl) {
+  if (!resolvedSitePostUrl || !resolvedImageUrl) {
     if (env.DB) {
       try {
         const artRow: any = await env.DB.prepare('SELECT featured_image, wp_post_id, wp_sync_status, original_url FROM articles WHERE id = ?').bind(translated.article_id).first();
         if (artRow?.featured_image && !resolvedImageUrl) {
           resolvedImageUrl = artRow.featured_image;
         }
-        if (artRow?.wp_post_id && !resolvedSitePostUrl) {
+        if (artRow?.wp_post_id && artRow?.wp_sync_status === 'published' && !resolvedSitePostUrl) {
           resolvedSitePostUrl = `https://updaaate.ir/?p=${artRow.wp_post_id}`;
         }
       } catch {}
     }
   }
 
-  if (!resolvedImageUrl && env.DB_ARCHIVE) {
+  // 3. WordPress-First Rule Enforcement:
+  // If not yet published to WordPress, automatically publish to WordPress first!
+  if (!resolvedSitePostUrl) {
+    console.log(`[Telegram] Article #${translated.article_id} is not yet published to WordPress. Initiating auto WordPress publication first...`);
     try {
-      const artRow: any = await env.DB_ARCHIVE.prepare('SELECT featured_image, wp_post_id FROM articles WHERE id = ?').bind(translated.article_id).first();
-      if (artRow?.featured_image) {
-        resolvedImageUrl = artRow.featured_image;
+      const { distributeToWordPress } = await import('./wpSync');
+      const wpResult = await distributeToWordPress(env, {
+        article_id: translated.article_id,
+        translation_id: translated.translation_id,
+        title: translated.title,
+        content: translated.content,
+        summary: translated.summary,
+        tags: translated.tags,
+        source_url: translated.source_url,
+        source_name: 'Cointelegraph',
+        featured_image: resolvedImageUrl,
+      });
+
+      if (wpResult.ok && (wpResult.postUrl || wpResult.postId)) {
+        resolvedSitePostUrl = wpResult.postUrl || `https://updaaate.ir/?p=${wpResult.postId}`;
+        console.log(`[Telegram] WordPress auto-publish succeeded. Web link: ${resolvedSitePostUrl}`);
+      } else {
+        const wpError = wpResult.error || 'خطای ناشناخته در ارتباط با وردپرس';
+        console.warn(`[Telegram] Aborting Telegram dispatch: WordPress publishing failed (${wpError})`);
+        return {
+          ok: false,
+          description: `ارسال به تلگرام متوقف شد: خبر هنوز در سایت آپدیت منتشر نشده است و انتشار اولیه در وردپرس با خطا مواجه شد (${wpError}).`,
+        };
       }
-      if (artRow?.wp_post_id && !resolvedSitePostUrl) {
-        resolvedSitePostUrl = `https://updaaate.ir/?p=${artRow.wp_post_id}`;
-      }
-    } catch {}
+    } catch (wpPublishErr: any) {
+      console.error(`[Telegram] Exception during WordPress pre-publication:`, wpPublishErr.message);
+      return {
+        ok: false,
+        description: `ارسال به تلگرام متوقف شد: انتشار اولیه در وردپرس با خطا مواجه شد: ${wpPublishErr.message}`,
+      };
+    }
   }
 
+  // 4. Send news to Telegram with exclusive link to our WordPress post
   const response = await sendNewsToTelegram({
     botToken: token,
     chatId,
     title: translated.title,
     content: translated.summary || translated.content,
     tags: translated.tags,
-    sourceUrl: translated.source_url,
-    sitePostUrl: resolvedSitePostUrl || undefined,
+    sitePostUrl: resolvedSitePostUrl,
     imageUrl: resolvedImageUrl,
   });
 
@@ -435,7 +455,7 @@ export async function distributeToTelegram(
         'telegram_distribution',
         translated.article_id,
         response.ok ? 'success' : 'failed',
-        response.ok ? `Sent message ID ${messageId} (Photo+Caption)` : response.description
+        response.ok ? `Sent message ID ${messageId} with Updaaate link` : response.description
       ).run();
     } catch (err: any) {
       console.warn('[Telegram] Failed to log distribution record:', err.message);

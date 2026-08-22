@@ -2785,7 +2785,77 @@ api.post('/news/:id/distribute', async (c) => {
       article_id: Number(articleId),
     };
 
-    // 3. توزیع در تلگرام در صورت درخواست
+    // 3. توزیع در وردپرس در صورت درخواست (ابتدا در وردپرس منتشر می‌شود تا آدرس خبر در سایت تولید شود)
+    let wpPostUrl: string | undefined = undefined;
+    if (platforms.includes('wordpress')) {
+      try {
+        const { distributeToWordPress } = await import('../cron/wpSync');
+        const wpRes = await distributeToWordPress(env, {
+          article_id: Number(articleId),
+          translation_id: translation.id,
+          title: translation.translated_title,
+          content: translation.translated_content,
+          summary: translation.translated_summary,
+          tags: translation.tags || null,
+          source_url: article.link || article.original_url,
+          source_name: 'Cointelegraph',
+          featured_image: article.featured_image || null,
+        });
+
+        if (wpRes.ok) {
+          wpPostUrl = wpRes.postUrl;
+          responseData.wordpress = {
+            published: true,
+            post_id: Number(wpRes.postId) || wpRes.postId,
+            post_url: wpRes.postUrl,
+          };
+          if (env.DB) {
+            try {
+              await env.DB.prepare(`
+                UPDATE articles
+                SET wp_sync_status = 'published',
+                    wp_post_id = ?,
+                    wp_published_at = datetime('now'),
+                    wp_error = NULL
+                WHERE id = ?
+              `).bind(Number(wpRes.postId) || null, articleId).run();
+            } catch {}
+          }
+        } else {
+          responseData.wordpress = {
+            published: false,
+            error: wpRes.error || 'عدم موفقیت در ارسال به وردپرس',
+          };
+          if (env.DB) {
+            try {
+              await env.DB.prepare(`
+                UPDATE articles
+                SET wp_sync_status = 'failed',
+                    wp_error = ?
+                WHERE id = ?
+              `).bind(wpRes.error || 'خطای وردپرس', articleId).run();
+            } catch {}
+          }
+        }
+      } catch (wpErr: any) {
+        responseData.wordpress = {
+          published: false,
+          error: wpErr.message,
+        };
+        if (env.DB) {
+          try {
+            await env.DB.prepare(`
+              UPDATE articles
+              SET wp_sync_status = 'failed',
+                  wp_error = ?
+              WHERE id = ?
+            `).bind(wpErr.message || 'خطای سرور', articleId).run();
+          } catch {}
+        }
+      }
+    }
+
+    // 4. توزیع در تلگرام در صورت درخواست (همراه با پیوند اختصاصی به سایت آپدیت)
     if (platforms.includes('telegram')) {
       try {
         let tagsList: string[] = [];
@@ -2808,6 +2878,7 @@ api.post('/news/:id/distribute', async (c) => {
           summary: translation.translated_summary,
           tags: tagsList,
           source_url: article.link || article.original_url,
+          site_post_url: wpPostUrl || undefined,
           image_url: article.featured_image || null,
         });
 
@@ -2857,74 +2928,6 @@ api.post('/news/:id/distribute', async (c) => {
                   telegram_error = ?
               WHERE id = ?
             `).bind(tgErr.message || 'خطای سرور', articleId).run();
-          } catch {}
-        }
-      }
-    }
-
-    // 4. توزیع در وردپرس در صورت درخواست
-    if (platforms.includes('wordpress')) {
-      try {
-        const { distributeToWordPress } = await import('../cron/wpSync');
-        const wpRes = await distributeToWordPress(env, {
-          article_id: Number(articleId),
-          translation_id: translation.id,
-          title: translation.translated_title,
-          content: translation.translated_content,
-          summary: translation.translated_summary,
-          tags: translation.tags || null,
-          source_url: article.link || article.original_url,
-          source_name: 'Cointelegraph',
-          featured_image: article.featured_image || null,
-        });
-
-        if (wpRes.ok) {
-          responseData.wordpress = {
-            published: true,
-            post_id: Number(wpRes.postId) || wpRes.postId,
-            post_url: wpRes.postUrl,
-          };
-          if (env.DB) {
-            try {
-              await env.DB.prepare(`
-                UPDATE articles
-                SET wp_sync_status = 'published',
-                    wp_post_id = ?,
-                    wp_published_at = datetime('now'),
-                    wp_error = NULL
-                WHERE id = ?
-              `).bind(Number(wpRes.postId) || null, articleId).run();
-            } catch {}
-          }
-        } else {
-          responseData.wordpress = {
-            published: false,
-            error: wpRes.error || 'عدم موفقیت در ارسال به وردپرس',
-          };
-          if (env.DB) {
-            try {
-              await env.DB.prepare(`
-                UPDATE articles
-                SET wp_sync_status = 'failed',
-                    wp_error = ?
-                WHERE id = ?
-              `).bind(wpRes.error || 'خطای وردپرس', articleId).run();
-            } catch {}
-          }
-        }
-      } catch (wpErr: any) {
-        responseData.wordpress = {
-          published: false,
-          error: wpErr.message,
-        };
-        if (env.DB) {
-          try {
-            await env.DB.prepare(`
-              UPDATE articles
-              SET wp_sync_status = 'failed',
-                  wp_error = ?
-              WHERE id = ?
-            `).bind(wpErr.message || 'خطای سرور', articleId).run();
           } catch {}
         }
       }

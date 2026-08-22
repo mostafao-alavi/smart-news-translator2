@@ -686,13 +686,13 @@ export const DestinationsTab: React.FC<DestinationsTabProps> = ({
                 </div>
                 <div className="space-y-1.5 flex-1">
                   <div className="font-bold flex flex-wrap items-center justify-between gap-1.5 text-sky-950">
-                    <span className="text-sm">دکمه شیشه‌ای هوشمند (Inline Keyboard) + ارسال با عکس شاخص</span>
+                    <span className="text-sm">دکمه شیشه‌ای هوشمند (انحصاراً وب‌سایت آپدیت) + شرط انتشار اولیه وردپرس</span>
                     <span className="bg-emerald-100 text-emerald-800 text-[10px] px-2.5 py-0.5 rounded-full font-bold border border-emerald-300">
-                      فعال و خودکار
+                      قانون وردپرس اول فعال
                     </span>
                   </div>
                   <p className="text-[11px] text-sky-900 leading-relaxed">
-                    پست‌ها علاوه بر <b>تصویر شاخص و کپشن بهینه</b>، دارای <b>دکمه شیشه‌ای «🌐 مطالعه متن کامل در وب‌سایت»</b> با لینک مستقیم به همان پست در وردپرس و دکمه منبع اصلی هستند که نرخ تعامل، کلیک و ترافیک سایت را به بالاترین حد می‌رساند.
+                    محتوا فقط زمانی به تلگرام ارسال می‌شود که ابتدا در وب‌سایت وردپرس منتشر شده باشد. کلیه دکمه‌های شیشه‌ای و لینک‌های مطالعه انحصاراً به سایت خودمان (<b>updaaate.ir</b>) هدایت می‌شوند و هیچ لینکی به منابع خارجی داده نمی‌شود تا ۱۰۰٪ ترافیک در رسانه شما متمرکز بماند.
                   </p>
                 </div>
               </div>
