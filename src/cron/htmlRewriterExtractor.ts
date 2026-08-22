@@ -73,6 +73,9 @@ export const BUILTIN_PROFILES: Record<string, SourceExtractionProfile> = {
       '[data-testid="post-article-meta"]',
       'veepn-intro-offer',
       '[data-testid="article-card"]',
+      '[data-testid="related-articles"]',
+      '[class*="more-on-the-subject"]',
+      '[class*="more-on-subject"]',
       // Common noise
       'script', 'style', 'noscript', 'iframe', 'svg', 'button', 'form', 'nav', 'header', 'footer',
       '[class*="related-"]', '[class*="newsletter"]', '[class*="podcast"]'
@@ -83,6 +86,9 @@ export const BUILTIN_PROFILES: Record<string, SourceExtractionProfile> = {
       'related:',
       'related :',
       'read more:',
+      'more on the subject',
+      'more on the subject:',
+      'more on subject',
       'disclaimer:',
       'produced in accordance with',
       'does not contain investment advice',
@@ -575,30 +581,52 @@ export async function extractWithCloudflareHTMLRewriter(
     let currentQuoteText = '';
     let currentListItemText = '';
 
+    let titleExtracted = false;
+    let authorExtracted = false;
+    let leadExtracted = false;
+
     const rewriter = new (globalThis as any).HTMLRewriter()
       // Title
       .on(profile.selectors.title, {
         element(el: any) {
           const val = el.getAttribute('content');
-          if (val && !title) title = cleanRawText(val);
+          if (val && !title) {
+            title = cleanRawText(val);
+            titleExtracted = true;
+          }
         },
         text(textChunk: any) {
-          if (!title) title += textChunk.text;
+          if (!titleExtracted) {
+            title += textChunk.text;
+            if (textChunk.lastInTextNode) {
+              titleExtracted = true;
+            }
+          }
         }
       })
       .on('title', {
         text(textChunk: any) {
-          if (!title) title += textChunk.text;
+          if (!title) {
+            title += textChunk.text;
+          }
         }
       })
       // Author
       .on(profile.selectors.author, {
         element(el: any) {
           const val = el.getAttribute('content');
-          if (val && !author) author = cleanRawText(val);
+          if (val && !author) {
+            author = cleanRawText(val);
+            authorExtracted = true;
+          }
         },
         text(textChunk: any) {
-          if (!author) author += textChunk.text;
+          if (!authorExtracted) {
+            author += textChunk.text;
+            if (textChunk.lastInTextNode) {
+              authorExtracted = true;
+            }
+          }
         }
       })
       // Featured Image
@@ -610,8 +638,18 @@ export async function extractWithCloudflareHTMLRewriter(
       })
       // Lead / Key Takeaways
       .on(profile.selectors.lead, {
+        element() {
+          if (!leadExtracted) {
+            leadText = '';
+          }
+        },
         text(textChunk: any) {
-          leadText += textChunk.text;
+          if (!leadExtracted) {
+            leadText += textChunk.text;
+            if (textChunk.lastInTextNode) {
+              leadExtracted = true;
+            }
+          }
         }
       });
 
@@ -627,100 +665,127 @@ export async function extractWithCloudflareHTMLRewriter(
       } catch {}
     }
 
-    // Article Content extraction targeting body container and standard prose tags
-    const containerList = profile.selectors.bodyContainer
-      .split(',')
-      .map(c => c.trim())
-      .filter(Boolean);
+    // We target the single best container selector or split cleanly
+    const primaryContainer = profile.selectors.bodyContainer.split(',')[0].trim() || '[data-testid="post__body"]';
 
-    // Register paragraphs handlers with valid Cloudflare el.onEndTag callback
-    for (const container of containerList) {
-      try {
-        rewriter.on(`${container} p`, {
-          element(el: any) {
-            currentParagraphText = '';
-            el.onEndTag(() => {
-              const cleanP = cleanRawText(currentParagraphText);
-              if (cleanP.length >= profile.minParagraphLength && !isNoiseLine(cleanP, profile.noiseTextPatterns)) {
-                if (!isCutOffMarker(cleanP, profile.cutOffMarkers)) {
+    // Track active element type to avoid overlap and isolate buffers
+    let activeType: 'p' | 'h' | 'quote' | 'li' | null = null;
+    let headingPrefix = '##';
+
+    rewriter
+      .on(`${primaryContainer} p, .ct-prose p`, {
+        element(el: any) {
+          activeType = 'p';
+          currentParagraphText = '';
+          el.onEndTag(() => {
+            const cleanP = cleanRawText(currentParagraphText);
+            if (cleanP.length >= profile.minParagraphLength && !isNoiseLine(cleanP, profile.noiseTextPatterns)) {
+              if (!isCutOffMarker(cleanP, profile.cutOffMarkers)) {
+                if (!paragraphs.includes(cleanP)) {
                   paragraphs.push(cleanP);
                 }
               }
-              currentParagraphText = '';
-            });
-          },
-          text(textChunk: any) {
+            }
+            currentParagraphText = '';
+            activeType = null;
+          });
+        },
+        text(textChunk: any) {
+          if (activeType === 'p') {
             currentParagraphText += textChunk.text;
           }
-        });
+        }
+      });
 
-        rewriter.on(`${container} h2, ${container} h3`, {
-          element(el: any) {
-            currentHeadingText = '';
-            const tag = el.tagName?.toLowerCase() || 'h2';
-            el.onEndTag(() => {
-              const cleanH = cleanRawText(currentHeadingText);
-              if (cleanH.length >= 3 && !isNoiseLine(cleanH, profile.noiseTextPatterns)) {
-                const prefix = tag === 'h3' ? '###' : '##';
-                headings.push(`${prefix} ${cleanH}`);
-                paragraphs.push(`${prefix} ${cleanH}`);
+    // Handle Headings (H2 / H3)
+    rewriter.on(`${primaryContainer} h2, ${primaryContainer} h3, .ct-prose h2, .ct-prose h3`, {
+      element(el: any) {
+        activeType = 'h';
+        const tag = (el.tagName || '').toLowerCase();
+        headingPrefix = tag === 'h3' ? '###' : '##';
+        currentHeadingText = '';
+        el.onEndTag(() => {
+          const cleanH = cleanRawText(currentHeadingText);
+          if (cleanH.length >= 3 && !isNoiseLine(cleanH, profile.noiseTextPatterns) && !isCutOffMarker(cleanH, profile.cutOffMarkers)) {
+            const formatted = `${headingPrefix} ${cleanH}`;
+            if (!paragraphs.includes(formatted)) {
+              headings.push(formatted);
+              paragraphs.push(formatted);
+            }
+          }
+          currentHeadingText = '';
+          activeType = null;
+        });
+      },
+      text(textChunk: any) {
+        if (activeType === 'h') {
+          currentHeadingText += textChunk.text;
+        }
+      }
+    });
+
+    if (profile.preserveQuotes) {
+      rewriter.on(`${primaryContainer} blockquote, .ct-prose blockquote`, {
+        element(el: any) {
+          activeType = 'quote';
+          currentQuoteText = '';
+          el.onEndTag(() => {
+            const cleanQ = cleanRawText(currentQuoteText);
+            if (cleanQ.length >= 5 && !isNoiseLine(cleanQ, profile.noiseTextPatterns) && !isCutOffMarker(cleanQ, profile.cutOffMarkers)) {
+              const formatted = `> ${cleanQ}`;
+              if (!paragraphs.includes(formatted)) {
+                paragraphs.push(formatted);
               }
-              currentHeadingText = '';
-            });
-          },
-          text(textChunk: any) {
-            currentHeadingText += textChunk.text;
-          }
-        });
-
-        if (profile.preserveQuotes) {
-          rewriter.on(`${container} blockquote`, {
-            element(el: any) {
-              currentQuoteText = '';
-              el.onEndTag(() => {
-                const cleanQ = cleanRawText(currentQuoteText);
-                if (cleanQ.length >= 5 && !isNoiseLine(cleanQ, profile.noiseTextPatterns)) {
-                  paragraphs.push(`> ${cleanQ}`);
-                }
-                currentQuoteText = '';
-              });
-            },
-            text(textChunk: any) {
-              currentQuoteText += textChunk.text;
             }
+            currentQuoteText = '';
+            activeType = null;
           });
-        }
-
-        if (profile.preserveLists) {
-          rewriter.on(`${container} li`, {
-            element(el: any) {
-              currentListItemText = '';
-              el.onEndTag(() => {
-                const cleanLi = cleanRawText(currentListItemText);
-                if (cleanLi.length >= 5 && !isNoiseLine(cleanLi, profile.noiseTextPatterns)) {
-                  paragraphs.push(`* ${cleanLi}`);
-                }
-                currentListItemText = '';
-              });
-            },
-            text(textChunk: any) {
-              currentListItemText += textChunk.text;
-            }
-          });
-        }
-
-        rewriter.on(`${container} img`, {
-          element(el: any) {
-            const src = el.getAttribute('src') || el.getAttribute('data-src');
-            const alt = el.getAttribute('alt') || '';
-            if (src && src.startsWith('http') && !src.includes('avatar') && !src.includes('logo') && !src.includes('icon')) {
-              images.push({ url: src, alt: alt.trim(), is_featured: images.length === 0 ? 1 : 0 });
-              if (!featuredImage) featuredImage = src;
-            }
+        },
+        text(textChunk: any) {
+          if (activeType === 'quote') {
+            currentQuoteText += textChunk.text;
           }
-        });
-      } catch {}
+        }
+      });
     }
+
+    if (profile.preserveLists) {
+      rewriter.on(`${primaryContainer} li, .ct-prose li`, {
+        element(el: any) {
+          activeType = 'li';
+          currentListItemText = '';
+          el.onEndTag(() => {
+            const cleanLi = cleanRawText(currentListItemText);
+            if (cleanLi.length >= 5 && !isNoiseLine(cleanLi, profile.noiseTextPatterns) && !isCutOffMarker(cleanLi, profile.cutOffMarkers)) {
+              const formatted = `* ${cleanLi}`;
+              if (!paragraphs.includes(formatted)) {
+                paragraphs.push(formatted);
+              }
+            }
+            currentListItemText = '';
+            activeType = null;
+          });
+        },
+        text(textChunk: any) {
+          if (activeType === 'li') {
+            currentListItemText += textChunk.text;
+          }
+        }
+      });
+    }
+
+    rewriter.on(`${primaryContainer} img, .ct-prose img`, {
+      element(el: any) {
+        const src = el.getAttribute('src') || el.getAttribute('data-src');
+        const alt = el.getAttribute('alt') || '';
+        if (src && src.startsWith('http') && !src.includes('avatar') && !src.includes('logo') && !src.includes('icon')) {
+          if (!images.some(img => img.url === src)) {
+            images.push({ url: src, alt: alt.trim(), is_featured: images.length === 0 ? 1 : 0 });
+            if (!featuredImage) featuredImage = src;
+          }
+        }
+      }
+    });
 
     const response = new Response(htmlText, {
       headers: { 'Content-Type': 'text/html; charset=utf-8' }
