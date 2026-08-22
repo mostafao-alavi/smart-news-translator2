@@ -163,9 +163,12 @@ export function parseRssXml(xmlText: string) {
 }
 
 /**
- * 1. Scrapes Cointelegraph RSS feed focusing on Latest News and ingests all available items
+ * 1. Scrapes any RSS feed source and identifies new items
  */
-export async function scrapeCointelegraph(env: Env, options?: { maxItems?: number }): Promise<Array<{
+export async function scrapeFeedSource(
+  env: Env,
+  source: { id: number; name: string; url: string; category?: string; scrape_limit?: number }
+): Promise<Array<{
   source_id: number;
   title: string;
   link: string;
@@ -173,11 +176,10 @@ export async function scrapeCointelegraph(env: Env, options?: { maxItems?: numbe
   published_at: string;
   featured_image?: string | null;
   external_id?: string;
-  id?: number;
 }>> {
-  const rssUrl = 'https://cointelegraph.com/rss';
-  const limit = options?.maxItems || 30;
-  console.log(`[Scraper] Fetching Cointelegraph RSS: ${rssUrl} (Targeting Latest News, max ${limit})`);
+  const rssUrl = source.url;
+  const limit = source.scrape_limit || 20;
+  console.log(`[Scraper] Fetching feed for "${source.name}": ${rssUrl} (Limit: ${limit})`);
 
   try {
     const response = await fetch(rssUrl, {
@@ -185,29 +187,28 @@ export async function scrapeCointelegraph(env: Env, options?: { maxItems?: numbe
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Hazardastan-RSS/1.0',
         'Accept': 'application/rss+xml, application/xml, text/xml, */*',
       },
-      signal: AbortSignal.timeout(12000),
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status} when fetching Cointelegraph RSS`);
+      throw new Error(`HTTP ${response.status} when fetching feed ${rssUrl}`);
     }
 
     const xmlText = await response.text();
     const allItems = parseRssXml(xmlText);
-    console.log(`[Scraper] Parsed ${allItems.length} total items from Cointelegraph RSS`);
+    console.log(`[Scraper] Parsed ${allItems.length} items from ${source.name} RSS`);
 
     if (allItems.length === 0) return [];
 
-    // Filter strictly for "Latest News" (or /news/ path which corresponds to latest news)
-    const latestNewsItems = allItems.filter(item => {
+    // Filter items (prefer news / latest)
+    const filtered = allItems.filter(item => {
       const cat = (item.category || '').toLowerCase().trim();
       const isLatestCat = cat.includes('latest') || cat === 'latest news' || cat === 'news';
-      const isNewsPath = item.link.includes('/news/');
+      const isNewsPath = item.link.includes('/news/') || item.link.includes('/markets/') || item.link.includes('/post/');
       return isLatestCat || isNewsPath || !cat;
     });
 
-    const itemsToProcess = latestNewsItems.length > 0 ? latestNewsItems : allItems;
-    console.log(`[Scraper] Found ${itemsToProcess.length} "latest-news" items in feed`);
+    const itemsToProcess = filtered.length > 0 ? filtered : allItems;
 
     // Check existing in DB Primary
     const links = itemsToProcess.map(i => i.link);
@@ -223,7 +224,6 @@ export async function scrapeCointelegraph(env: Env, options?: { maxItems?: numbe
 
         existingLinks = new Set(existingRes.results?.map(r => r.link) || []);
       } catch (dbErr) {
-        // Table might use original_url in legacy schema
         try {
           const legacyRes = await env.DB.prepare(
             `SELECT original_url FROM articles WHERE original_url IN (${placeholders})`
@@ -233,7 +233,6 @@ export async function scrapeCointelegraph(env: Env, options?: { maxItems?: numbe
       }
     }
 
-    // Also check KV cache if available
     if (env.CACHE) {
       for (const item of itemsToProcess) {
         try {
@@ -247,7 +246,7 @@ export async function scrapeCointelegraph(env: Env, options?: { maxItems?: numbe
       .filter(item => !existingLinks.has(item.link))
       .slice(0, limit)
       .map(item => ({
-        source_id: 1,
+        source_id: source.id,
         title: item.title,
         link: item.link,
         summary: item.summary,
@@ -256,16 +255,37 @@ export async function scrapeCointelegraph(env: Env, options?: { maxItems?: numbe
         external_id: item.externalId || item.link,
       }));
 
-    console.log(`[Scraper] Found ${newArticles.length} brand new latest-news articles to process`);
+    console.log(`[Scraper] Found ${newArticles.length} brand new articles to ingest from ${source.name}`);
     return newArticles;
   } catch (err: any) {
-    console.error(`[Scraper] Error fetching Cointelegraph RSS:`, err.message);
+    console.error(`[Scraper] Error fetching feed for ${source.name}:`, err.message);
     return [];
   }
 }
 
 /**
- * 2. Downloads full article HTML from the web page and extracts clean structured body text, author, and media
+ * Scrapes Cointelegraph RSS feed focusing on Latest News (Legacy alias)
+ */
+export async function scrapeCointelegraph(env: Env, options?: { maxItems?: number }): Promise<Array<{
+  source_id: number;
+  title: string;
+  link: string;
+  summary: string;
+  published_at: string;
+  featured_image?: string | null;
+  external_id?: string;
+  id?: number;
+}>> {
+  return scrapeFeedSource(env, {
+    id: 1,
+    name: 'Cointelegraph',
+    url: 'https://cointelegraph.com/rss',
+    scrape_limit: options?.maxItems || 30
+  });
+}
+
+/**
+ * 2. Downloads full article HTML from the web page and automatically extracts clean structured body text, author, and media via HTMLRewriter
  */
 import { extractArticleFullText } from './htmlRewriterExtractor';
 
@@ -278,17 +298,18 @@ export async function scrapeFullArticle(env: Env, url: string): Promise<{
 }> {
   const result = await extractArticleFullText(url);
   return {
-    full_text: result.full_text,
+    full_text: result.full_text || '',
     html_content: result.html_content || '',
-    author: result.author || 'Cointelegraph',
-    images: result.images,
-    featured_image: result.featured_image,
+    author: result.author || null,
+    images: result.images || [],
+    featured_image: result.featured_image || null,
   };
 }
 
 
 /**
  * 3. Saves article metadata, full webpage text, and images into D1 Primary (`news_db`)
+ * NOTE: The full_text extracted from HTMLRewriter is ALWAYS the primary source of truth for `content`.
  */
 export async function saveArticle(
   env: Env,
@@ -312,8 +333,15 @@ export async function saveArticle(
 
   try {
     const featuredImg = article.featured_image || (images && images.length > 0 ? images[0].url : null);
-    const fullTextBody = (content.full_text || article.summary || article.title).trim();
-    const shortSummary = (article.summary || content.full_text.slice(0, 300) || article.title).trim();
+    
+    // Crucial rule: Full HTMLRewriter text is the content basis, NEVER the truncated RSS summary.
+    const fullTextBody = (content.full_text && content.full_text.length > 50)
+      ? content.full_text.trim()
+      : (article.summary || article.title).trim();
+
+    const shortSummary = (content.full_text && content.full_text.length > 50)
+      ? content.full_text.slice(0, 300).trim()
+      : (article.summary || article.title).trim();
 
     // 1. Check if article already exists in DB by link or original_url
     let articleId: number | null = null;
@@ -324,7 +352,7 @@ export async function saveArticle(
 
       if (existing) {
         articleId = existing.id;
-        // Update content and featured_image if we now have full text
+        // Upgrade content with HTMLRewriter full text
         if (fullTextBody && fullTextBody.length > (existing.content?.length || 0)) {
           try {
             await env.DB.prepare(`
@@ -404,7 +432,7 @@ export async function saveArticle(
 
     if (!articleId) return null;
 
-    // 3. Insert or update article_contents table
+    // 3. Insert or update article_contents table with full text
     if (fullTextBody) {
       try {
         await env.DB.prepare(`
@@ -414,7 +442,7 @@ export async function saveArticle(
           articleId,
           fullTextBody,
           content.html_content || null,
-          content.author || 'Cointelegraph'
+          content.author || 'Unknown'
         ).run();
       } catch {}
     }
@@ -451,22 +479,56 @@ export async function saveArticle(
 }
 
 /**
- * General multi-source scraper for backwards compatibility
+ * Multi-source scraper: Automatically fetches all active sources,
+ * and extracts 100% full text using HTMLRewriter automatically for every new article.
  */
 export async function scraper(env: Env): Promise<{ scrapedSources: number; insertedArticles: number; errors: string[] }> {
-  const cointelegraphArticles = await scrapeCointelegraph(env);
-  let inserted = 0;
+  let sourcesToScrape: Array<{ id: number; name: string; url: string; scrape_limit?: number }> = [];
 
-  for (const art of cointelegraphArticles) {
-    const full = await scrapeFullArticle(env, art.link);
-    const id = await saveArticle(env, art, full, full.images);
-    if (id) inserted++;
+  try {
+    if (env.DB) {
+      const activeRes = await env.DB.prepare('SELECT id, name, url, scrape_limit FROM sources WHERE is_active = 1').all<any>();
+      if (activeRes.results && activeRes.results.length > 0) {
+        sourcesToScrape = activeRes.results;
+      }
+    }
+  } catch (err: any) {
+    console.warn('[Scraper] Error loading active sources from DB:', err.message);
+  }
+
+  if (sourcesToScrape.length === 0) {
+    sourcesToScrape = [
+      { id: 1, name: 'Cointelegraph', url: 'https://cointelegraph.com/rss', scrape_limit: 15 },
+      { id: 2, name: 'Decrypt', url: 'https://decrypt.co/feed', scrape_limit: 10 },
+      { id: 3, name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', scrape_limit: 10 }
+    ];
+  }
+
+  let totalInserted = 0;
+  const errors: string[] = [];
+
+  for (const src of sourcesToScrape) {
+    try {
+      const newItems = await scrapeFeedSource(env, src);
+      for (const item of newItems) {
+        try {
+          // ALWAYS automatically extract full HTMLRewriter text
+          const full = await scrapeFullArticle(env, item.link);
+          const id = await saveArticle(env, item, full, full.images);
+          if (id) totalInserted++;
+        } catch (itemErr: any) {
+          console.error(`[Scraper] Error auto-extracting item ${item.link}:`, itemErr.message);
+        }
+      }
+    } catch (srcErr: any) {
+      errors.push(`Error scraping ${src.name}: ${srcErr.message}`);
+    }
   }
 
   return {
-    scrapedSources: 1,
-    insertedArticles: inserted,
-    errors: [],
+    scrapedSources: sourcesToScrape.length,
+    insertedArticles: totalInserted,
+    errors,
   };
 }
 

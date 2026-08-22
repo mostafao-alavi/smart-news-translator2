@@ -483,12 +483,27 @@ export async function translator(env: Env): Promise<{ processed: number; success
           "UPDATE articles SET translation_status = 'processing' WHERE id = ?"
         ).bind(article.id).run();
 
+        // Check if article.content is short (< 250 chars) or equal to title, auto-extract full text
+        let contentToTranslate = (article.content || '').trim();
+        const articleUrl = (article as any).original_url || (article as any).link;
+        if ((!contentToTranslate || contentToTranslate.length < 250 || contentToTranslate === article.title) && articleUrl && articleUrl.startsWith('http')) {
+          try {
+            const { extractArticleFullText } = await import('./htmlRewriterExtractor');
+            const extracted = await extractArticleFullText(articleUrl);
+            if (extracted && extracted.full_text && extracted.full_text.length > 50) {
+              contentToTranslate = extracted.full_text;
+              article.content = contentToTranslate;
+              await env.DB.prepare('UPDATE articles SET content = ? WHERE id = ?').bind(contentToTranslate, article.id).run().catch(() => {});
+            }
+          } catch {}
+        }
+
         // ----------------------------------------------------
         // STAGE 1: Journalistic Persian Translation
         // ----------------------------------------------------
         const [titleResult, contentResult] = await Promise.all([
           translateTextWithAI(env, article.title, 'english', 'persian'),
-          translateTextWithAI(env, article.content || article.title, 'english', 'persian'),
+          translateTextWithAI(env, contentToTranslate || article.title, 'english', 'persian'),
         ]);
 
         const modelUsed = titleResult.modelUsed || contentResult.modelUsed || 'gemini-3.7-flash';
@@ -671,7 +686,23 @@ export async function translateArticle(
   } catch {}
 
   const rawTitle = articleRow.title || 'بدون عنوان';
-  const rawContent = articleRow.full_text || articleRow.summary || rawTitle;
+  let rawContent = articleRow.full_text || articleRow.summary || rawTitle;
+
+  // Auto-extract full text if rawContent is short (< 250 chars) or equal to title
+  if ((!rawContent || rawContent.length < 250 || rawContent === rawTitle) && articleRow.link && articleRow.link.startsWith('http')) {
+    try {
+      const { extractArticleFullText } = await import('./htmlRewriterExtractor');
+      const extracted = await extractArticleFullText(articleRow.link);
+      if (extracted && extracted.full_text && extracted.full_text.length > 50) {
+        rawContent = extracted.full_text;
+        if (extracted.featured_image && !articleRow.featured_image) {
+          articleRow.featured_image = extracted.featured_image;
+        }
+        await env.DB.prepare('UPDATE articles SET content = ?, featured_image = COALESCE(?, featured_image) WHERE id = ?')
+          .bind(rawContent, extracted.featured_image || null, articleId).run().catch(() => {});
+      }
+    } catch {}
+  }
 
   // 2. Stage 1: Persian Translation
   const [titleRes, contentRes] = await Promise.all([

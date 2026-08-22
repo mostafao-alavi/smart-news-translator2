@@ -545,7 +545,7 @@ const handleFetchArticleDetail = async (c: any) => {
         articles.id,
         articles.source_id,
         sources.name AS source_name,
-        articles.original_url,
+        COALESCE(articles.original_url, (SELECT link FROM articles a2 WHERE a2.id = articles.id)) AS original_url,
         articles.title,
         articles.content,
         articles.featured_image,
@@ -577,6 +577,32 @@ const handleFetchArticleDetail = async (c: any) => {
 
     if (!article) {
       return c.json({ success: false, data: null, error: 'خبر یافت نشد' }, 404);
+    }
+
+    // Automatically extract full text via HTMLRewriter if content is short (< 250 chars) or equals title
+    const targetUrl = article.original_url;
+    if (
+      (!article.content || article.content.trim().length < 250 || article.content.trim() === article.title?.trim()) &&
+      targetUrl &&
+      targetUrl.startsWith('http')
+    ) {
+      try {
+        const { extractArticleFullText } = await import('../cron/htmlRewriterExtractor');
+        const extracted = await extractArticleFullText(targetUrl);
+        if (extracted && extracted.full_text && extracted.full_text.length > 50) {
+          article.content = extracted.full_text;
+          if (extracted.featured_image && !article.featured_image) {
+            article.featured_image = extracted.featured_image;
+          }
+          await c.env.DB.prepare(`
+            UPDATE articles 
+            SET content = ?, featured_image = COALESCE(?, featured_image)
+            WHERE id = ?
+          `).bind(extracted.full_text, extracted.featured_image || null, article.id).run().catch(() => {});
+        }
+      } catch (extractErr) {
+        console.warn('[Auto-Extractor] Auto extraction on detail fetch note:', extractErr);
+      }
     }
 
     c.header('Cache-Control', 'public, max-age=30, s-maxage=60');
@@ -912,17 +938,23 @@ api.put('/sources/:id', async (c) => {
 api.post('/sources/:id/scrape', async (c) => {
   const id = c.req.param('id');
   try {
-    const { scrapeCointelegraph, scrapeFullArticle, saveArticle } = await import('../cron/scraper');
+    const { scrapeFeedSource, scrapeFullArticle, saveArticle } = await import('../cron/scraper');
     
     // Check if source exists
     const source = await c.env.DB.prepare('SELECT * FROM sources WHERE id = ?').bind(id).first<any>();
-    
-    // If it's Cointelegraph or general RSS
-    const articles = await scrapeCointelegraph(c.env);
+    const sourceObj = source || {
+      id: Number(id) || 1,
+      name: 'Cointelegraph',
+      url: 'https://cointelegraph.com/rss',
+      scrape_limit: 20,
+    };
+
+    const articles = await scrapeFeedSource(c.env, sourceObj);
     let insertedCount = 0;
 
     for (const art of articles) {
       try {
+        // ALWAYS automatically extract full HTMLRewriter text
         const fullContent = await scrapeFullArticle(c.env, art.link);
         const artId = await saveArticle(
           c.env,
@@ -942,9 +974,9 @@ api.post('/sources/:id/scrape', async (c) => {
       success: true,
       data: {
         sourceId: Number(id),
-        sourceName: source?.name || 'Cointelegraph',
+        sourceName: sourceObj.name,
         newlyInserted: insertedCount,
-        message: `تعداد ${insertedCount} مقاله جدید با موفقیت دریافت و ذخیره شد.`,
+        message: `تعداد ${insertedCount} مقاله جدید با استخراج متن کامل خودکار دریافت و ذخیره شد.`,
       },
       error: null,
     }, 200);
@@ -1035,18 +1067,52 @@ api.post('/trigger-scraper', async (c) => {
   }
 });
 
-// POST /api/extract-preview - Test live web extraction on any news article URL with Cloudflare HTMLRewriter
-api.post('/extract-preview', async (c) => {
+// GET /api/extraction-profiles - List all source extraction & cleaning profiles
+api.get('/extraction-profiles', async (c) => {
   try {
-    const body = await c.req.json<{ url: string; customRules?: any }>().catch(() => ({ url: '', customRules: undefined }));
-    const targetUrl = (body.url || '').trim();
+    const { getAllProfiles, BUILTIN_PROFILES } = await import('../cron/htmlRewriterExtractor');
+    const profiles = getAllProfiles();
+    return c.json({ success: true, data: profiles, error: null }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
 
-    if (!targetUrl || !targetUrl.startsWith('http')) {
-      return c.json({ success: false, data: null, error: 'آدرس URL معتبر وارد نشده است.' }, 400);
+// POST /api/extraction-profiles - Register or update a custom source extraction profile
+api.post('/extraction-profiles', async (c) => {
+  try {
+    const body = await c.req.json<any>();
+    if (!body || !body.id || !body.name || !body.domains || !body.selectors) {
+      return c.json({ success: false, data: null, error: 'پارامترهای الزامی پروفایل (id, name, domains, selectors) ارسال نشده است.' }, 400);
     }
 
-    const { extractArticleFullText, DEFAULT_CLEANING_RULES } = await import('../cron/htmlRewriterExtractor');
-    const result = await extractArticleFullText(targetUrl, body.customRules);
+    const { registerOrUpdateProfile, getAllProfiles } = await import('../cron/htmlRewriterExtractor');
+    registerOrUpdateProfile(body);
+    return c.json({ success: true, data: body, message: `پروفایل استخراج برای منبع "${body.name}" با موفقیت ذخیره شد.`, error: null }, 200);
+  } catch (err: any) {
+    return c.json({ success: false, data: null, error: err.message }, 500);
+  }
+});
+
+// POST /api/extract-preview - Test live web extraction on any news article URL or raw HTML with Cloudflare HTMLRewriter
+api.post('/extract-preview', async (c) => {
+  try {
+    const body = await c.req.json<{ url?: string; html?: string; customRules?: any }>().catch(() => ({ url: '', html: '', customRules: undefined }));
+    const targetUrl = (body.url || '').trim() || 'https://cointelegraph.com/news/preview-article';
+    const rawHtml = (body.html || '').trim();
+
+    const { extractArticleFullText, extractWithCheerioDom, getExtractionProfileForUrl, DEFAULT_CLEANING_RULES } = await import('../cron/htmlRewriterExtractor');
+    const matchedProfile = getExtractionProfileForUrl(targetUrl, body.customRules);
+
+    let result;
+    if (rawHtml && rawHtml.length > 50) {
+      result = extractWithCheerioDom(rawHtml, targetUrl, body.customRules);
+    } else {
+      if (!targetUrl || !targetUrl.startsWith('http')) {
+        return c.json({ success: false, data: null, error: 'آدرس URL معتبر یا کد HTML وارد نشده است.' }, 400);
+      }
+      result = await extractArticleFullText(targetUrl, body.customRules);
+    }
 
     return c.json({
       success: true,
@@ -1065,7 +1131,17 @@ api.post('/extract-preview', async (c) => {
         text_length: result.stats.char_count,
         paragraphs_count: result.stats.paragraph_count,
         engine_used: result.engine_used,
-        active_rules: DEFAULT_CLEANING_RULES,
+        applied_profile: result.applied_profile || {
+          id: matchedProfile.id,
+          name: matchedProfile.name,
+          isVerified: !!matchedProfile.isVerified
+        },
+        active_rules: {
+          selectors: matchedProfile.selectors,
+          removeSelectors: matchedProfile.removeSelectors,
+          noiseTextPatterns: matchedProfile.noiseTextPatterns,
+          cutOffMarkers: matchedProfile.cutOffMarkers,
+        },
       },
       error: null,
     }, 200);

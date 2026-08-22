@@ -78,7 +78,9 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
   const [refetchingId, setRefetchingId] = useState<number | null>(null);
   const [refetchFeedback, setRefetchFeedback] = useState<{ id: number; message: string; ok: boolean } | null>(null);
   const [isTesterOpen, setIsTesterOpen] = useState(false);
+  const [testInputMode, setTestInputMode] = useState<'url' | 'html'>('url');
   const [testUrl, setTestUrl] = useState('');
+  const [testRawHtml, setTestRawHtml] = useState('');
   const [testResult, setTestResult] = useState<any>(null);
   const [isTesting, setIsTesting] = useState(false);
   const [testerTab, setTesterTab] = useState<'preview' | 'rules' | 'raw'>('preview');
@@ -303,23 +305,31 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
     }
   };
 
-  // 2. Test live HTMLRewriter extraction on any URL
+  // 2. Test live HTMLRewriter extraction on URL or Raw HTML
   const handleTestLiveExtract = async (overrideUrl?: string) => {
-    const target = (overrideUrl || testUrl).trim();
-    if (!target || !target.startsWith('http')) return;
+    const isHtmlMode = testInputMode === 'html';
+    const targetUrl = (overrideUrl || testUrl).trim();
+    const rawHtml = testRawHtml.trim();
+
+    if (!isHtmlMode && (!targetUrl || !targetUrl.startsWith('http'))) return;
+    if (isHtmlMode && !rawHtml) return;
+
     setIsTesting(true);
     setTestResult(null);
     try {
       const res = await fetch('/api/extract-preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: target }),
+        body: JSON.stringify({
+          url: targetUrl || 'https://cointelegraph.com/news/preview',
+          html: isHtmlMode ? rawHtml : undefined,
+        }),
       });
       const data = await res.json();
       if (data.success && data.data) {
         setTestResult(data.data);
       } else {
-        setTestResult({ error: data.error || 'خطا در استخراج محتوا از این آدرس' });
+        setTestResult({ error: data.error || 'خطا در استخراج محتوا' });
       }
     } catch (err: any) {
       setTestResult({ error: err.message });
@@ -779,22 +789,27 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
                           <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-200 gap-2 flex-wrap">
                             <span className="text-xs font-bold text-sky-800 flex items-center gap-1.5">
                               <Globe className="w-3.5 h-3.5 text-sky-600" />
-                              <span>متن اصلی خبر (Original Source)</span>
+                              <span>متن کامل انگلیسی (استخراج خودکار با HTMLRewriter)</span>
                             </span>
 
                             <div className="flex items-center gap-1.5">
+                              <span className="inline-flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200 font-bold px-2 py-0.5 rounded-lg">
+                                <Check className="w-3 h-3 text-emerald-600" />
+                                <span>متن کامل استخراج‌شده</span>
+                              </span>
+
                               <button
                                 onClick={() => handleRefetchFullText(selectedArticle.id)}
                                 disabled={refetchingId === selectedArticle.id}
-                                title="استخراج متن کامل و تمیز از وب‌سایت منبع با موتور HTMLRewriter"
+                                title="به‌روزرسانی مجدد متن از وب‌سایت منبع"
                                 className="text-[10px] text-sky-700 hover:text-sky-900 bg-sky-100/70 hover:bg-sky-200/70 border border-sky-200 px-2 py-0.5 rounded-lg flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
                               >
-                                <Zap className={`w-3 h-3 text-sky-600 ${refetchingId === selectedArticle.id ? 'animate-spin' : ''}`} />
-                                <span>{refetchingId === selectedArticle.id ? 'در حال استخراج...' : '⚡ استخراج متن کامل (HTMLRewriter)'}</span>
+                                <RefreshCw className={`w-3 h-3 text-sky-600 ${refetchingId === selectedArticle.id ? 'animate-spin' : ''}`} />
+                                <span>{refetchingId === selectedArticle.id ? 'در حال دریافت...' : 'بروزرسانی مجدد'}</span>
                               </button>
 
-                              <span className="text-[10px] text-gray-400 font-mono px-1.5 py-0.5 bg-white rounded border border-gray-200">
-                                {fullContent ? `${fullContent.length} chars` : 'RSS Feed'}
+                              <span className="text-[10px] text-gray-500 font-mono px-1.5 py-0.5 bg-white rounded border border-gray-200">
+                                {fullContent ? `${fullContent.length} کاراکتر` : '0'}
                               </span>
                             </div>
                           </div>
@@ -1037,76 +1052,121 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
               </button>
             </div>
 
-            {/* URL Input & Quick Links */}
+            {/* Mode Switcher & URL/HTML Input */}
             <div className="p-4 border-b border-gray-100 space-y-3 bg-white">
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Globe className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="url"
-                    value={testUrl}
-                    onChange={(e) => setTestUrl(e.target.value)}
-                    placeholder="https://cointelegraph.com/news/..."
-                    className="w-full pl-3 pr-9 py-2.5 text-xs font-mono bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-sky-500 focus:outline-none transition-colors ltr text-left"
-                  />
+              <div className="flex items-center gap-2">
+                <div className="flex bg-gray-100 p-0.5 rounded-lg text-xs font-bold">
+                  <button
+                    onClick={() => setTestInputMode('url')}
+                    className={`px-3 py-1 rounded-md transition-all ${
+                      testInputMode === 'url' ? 'bg-white text-sky-700 shadow-xs' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    آدرس اینترنتی (URL)
+                  </button>
+                  <button
+                    onClick={() => setTestInputMode('html')}
+                    className={`px-3 py-1 rounded-md transition-all ${
+                      testInputMode === 'html' ? 'bg-white text-sky-700 shadow-xs' : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    کد خام HTML (Raw HTML)
+                  </button>
                 </div>
-
-                <button
-                  onClick={() => handleTestLiveExtract()}
-                  disabled={isTesting || !testUrl.trim()}
-                  className="bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer shrink-0"
-                >
-                  <Zap className={`w-4 h-4 ${isTesting ? 'animate-spin' : ''}`} />
-                  <span>{isTesting ? 'در حال استخراج...' : 'شروع استخراج'}</span>
-                </button>
               </div>
+
+              {testInputMode === 'url' ? (
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Globe className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="url"
+                      value={testUrl}
+                      onChange={(e) => setTestUrl(e.target.value)}
+                      placeholder="https://cointelegraph.com/news/binance-employees-questioned-uae-released"
+                      className="w-full pl-3 pr-9 py-2.5 text-xs font-mono bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-sky-500 focus:outline-none transition-colors ltr text-left"
+                    />
+                  </div>
+
+                  <button
+                    onClick={() => handleTestLiveExtract()}
+                    disabled={isTesting || !testUrl.trim()}
+                    className="bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer shrink-0"
+                  >
+                    <Zap className={`w-4 h-4 ${isTesting ? 'animate-spin' : ''}`} />
+                    <span>{isTesting ? 'در حال استخراج...' : 'شروع استخراج'}</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <textarea
+                    rows={4}
+                    value={testRawHtml}
+                    onChange={(e) => setTestRawHtml(e.target.value)}
+                    placeholder="کد HTML خام صفحه را اینجا Paste کنید..."
+                    className="w-full p-3 text-xs font-mono bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-sky-500 focus:outline-none transition-colors ltr text-left"
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      onClick={() => handleTestLiveExtract()}
+                      disabled={isTesting || !testRawHtml.trim()}
+                      className="bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer"
+                    >
+                      <Zap className={`w-4 h-4 ${isTesting ? 'animate-spin' : ''}`} />
+                      <span>{isTesting ? 'در حال پردازش...' : 'استخراج و تمیزسازی HTML'}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Quick source presets */}
-              <div className="flex items-center gap-2 text-[11px] text-gray-500 flex-wrap">
-                <span className="font-bold text-gray-700">نمونه‌ها:</span>
-                {selectedArticle?.link && (
+              {testInputMode === 'url' && (
+                <div className="flex items-center gap-2 text-[11px] text-gray-500 flex-wrap">
+                  <span className="font-bold text-gray-700">نمونه‌ها:</span>
+                  {selectedArticle?.link && (
+                    <button
+                      onClick={() => {
+                        const url = selectedArticle.link || selectedArticle.original_url || '';
+                        setTestUrl(url);
+                        handleTestLiveExtract(url);
+                      }}
+                      className="text-sky-700 hover:underline bg-sky-50 px-2 py-0.5 rounded-md border border-sky-100"
+                    >
+                      خبر انتخاب‌شده جاری ({selectedArticle.source_name || 'فعلی'})
+                    </button>
+                  )}
                   <button
                     onClick={() => {
-                      const url = selectedArticle.link || selectedArticle.original_url || '';
-                      setTestUrl(url);
-                      handleTestLiveExtract(url);
+                      const sample = 'https://cointelegraph.com/news/binance-employees-questioned-uae-released';
+                      setTestUrl(sample);
+                      handleTestLiveExtract(sample);
                     }}
-                    className="text-sky-700 hover:underline bg-sky-50 px-2 py-0.5 rounded-md border border-sky-100"
+                    className="text-gray-600 hover:text-gray-900 bg-gray-100 px-2 py-0.5 rounded-md"
                   >
-                    خبر انتخاب‌شده جاری ({selectedArticle.source_name || 'فعلی'})
+                    Cointelegraph Binance UAE
                   </button>
-                )}
-                <button
-                  onClick={() => {
-                    const sample = 'https://cointelegraph.com/news/crypto-market-rebound-fed-rate-cut';
-                    setTestUrl(sample);
-                    handleTestLiveExtract(sample);
-                  }}
-                  className="text-gray-600 hover:text-gray-900 bg-gray-100 px-2 py-0.5 rounded-md"
-                >
-                  Cointelegraph
-                </button>
-                <button
-                  onClick={() => {
-                    const sample = 'https://decrypt.co/news-explorer';
-                    setTestUrl(sample);
-                    handleTestLiveExtract(sample);
-                  }}
-                  className="text-gray-600 hover:text-gray-900 bg-gray-100 px-2 py-0.5 rounded-md"
-                >
-                  Decrypt
-                </button>
-                <button
-                  onClick={() => {
-                    const sample = 'https://www.coindesk.com/markets';
-                    setTestUrl(sample);
-                    handleTestLiveExtract(sample);
-                  }}
-                  className="text-gray-600 hover:text-gray-900 bg-gray-100 px-2 py-0.5 rounded-md"
-                >
-                  CoinDesk
-                </button>
-              </div>
+                  <button
+                    onClick={() => {
+                      const sample = 'https://decrypt.co/news-explorer';
+                      setTestUrl(sample);
+                      handleTestLiveExtract(sample);
+                    }}
+                    className="text-gray-600 hover:text-gray-900 bg-gray-100 px-2 py-0.5 rounded-md"
+                  >
+                    Decrypt
+                  </button>
+                  <button
+                    onClick={() => {
+                      const sample = 'https://www.coindesk.com/markets';
+                      setTestUrl(sample);
+                      handleTestLiveExtract(sample);
+                    }}
+                    className="text-gray-600 hover:text-gray-900 bg-gray-100 px-2 py-0.5 rounded-md"
+                  >
+                    CoinDesk
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Modal Body & Results */}
@@ -1141,7 +1201,17 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {testResult.applied_profile && (
+                      <span className="text-[11px] font-bold px-2.5 py-1 bg-amber-50 text-amber-900 border border-amber-200 rounded-lg flex items-center gap-1.5 shadow-2xs">
+                        <span className="w-2 h-2 rounded-full bg-amber-500" />
+                        <span>پروفایل منبع: {testResult.applied_profile.name}</span>
+                        {testResult.applied_profile.isVerified && (
+                          <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1 rounded font-mono">تأییدشده ✓</span>
+                        )}
+                      </span>
+                    )}
+
                     <span className="text-[11px] font-mono px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg flex items-center gap-1">
                       <Cpu className="w-3 h-3 text-emerald-600" />
                       <span>{testResult.engine_used === 'cloudflare_htmlrewriter' ? 'Cloudflare HTMLRewriter' : 'Node DOM Engine'}</span>
