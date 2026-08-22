@@ -34,8 +34,15 @@ async function startServer() {
   const honoListener = getRequestListener(fetchHandler as any);
 
   // Mount API
-  app.use('/api', (req, res, next) => {
-    honoListener(req, res);
+  app.use('/api', async (req, res, next) => {
+    try {
+      await honoListener(req, res);
+    } catch (err: any) {
+      console.error('[API Router Error]:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, data: null, error: err?.message || 'Internal API Router Error' });
+      }
+    }
   });
 
   // Vite middleware for development

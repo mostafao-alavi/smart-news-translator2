@@ -18,7 +18,15 @@ import {
   Edit3,
   Copy,
   Check,
-  ImageIcon
+  ImageIcon,
+  Zap,
+  Sliders,
+  ShieldCheck,
+  Eye,
+  Filter,
+  Cpu,
+  X,
+  Code2
 } from 'lucide-react';
 import { DatabaseErrorFallback } from './DatabaseErrorFallback';
 import { EmptyState } from './EmptyState';
@@ -66,6 +74,15 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [contentViewMode, setContentViewMode] = useState<'split' | 'persian' | 'english'>('split');
 
+  // HTMLRewriter refetch & test states
+  const [refetchingId, setRefetchingId] = useState<number | null>(null);
+  const [refetchFeedback, setRefetchFeedback] = useState<{ id: number; message: string; ok: boolean } | null>(null);
+  const [isTesterOpen, setIsTesterOpen] = useState(false);
+  const [testUrl, setTestUrl] = useState('');
+  const [testResult, setTestResult] = useState<any>(null);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testerTab, setTesterTab] = useState<'preview' | 'rules' | 'raw'>('preview');
+
   // Error fallback
   if (error) {
     return (
@@ -112,22 +129,39 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
 
   // Load article detailed text on selection
   useEffect(() => {
-    if (selectedArticleId && !detailsMap[selectedArticleId]) {
-      setLoadingDetail(true);
-      fetch(`/api/news/${selectedArticleId}`)
-        .then((res) => res.json())
-        .then((json) => {
-          if (json.success && json.data) {
-            setDetailsMap((prev) => ({
-              ...prev,
-              [selectedArticleId]: json.data
-            }));
-          }
-        })
-        .catch((err) => console.error('Error fetching article detail:', err))
-        .finally(() => setLoadingDetail(false));
-    }
-  }, [selectedArticleId, detailsMap]);
+    if (!selectedArticleId) return;
+    if (detailsMap[selectedArticleId]) return;
+
+    let isMounted = true;
+    setLoadingDetail(true);
+    fetch(`/api/news/${selectedArticleId}`)
+      .then(async (res) => {
+        if (!res.ok) return null;
+        try {
+          return await res.json();
+        } catch {
+          return null;
+        }
+      })
+      .then((json) => {
+        if (isMounted && json && json.success && json.data) {
+          setDetailsMap((prev) => ({
+            ...prev,
+            [selectedArticleId]: json.data
+          }));
+        }
+      })
+      .catch((err) => {
+        console.warn('[ContentDesk] Article detail fetch note:', err?.message || err);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingDetail(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedArticleId]);
 
   const selectedArticle = news.find((n) => n.id === selectedArticleId);
   const detailData = selectedArticleId ? detailsMap[selectedArticleId] : null;
@@ -226,6 +260,93 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  // 1. Refetch full article webpage via HTMLRewriter
+  const handleRefetchFullText = async (id: number) => {
+    setRefetchingId(id);
+    setRefetchFeedback(null);
+    try {
+      const res = await fetch(`/api/articles/${id}/refetch-content`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setDetailsMap((prev) => ({
+          ...prev,
+          [id]: {
+            ...prev[id],
+            content: data.data.content,
+            featured_image: data.data.featured_image || prev[id]?.featured_image,
+          }
+        }));
+        setRefetchFeedback({
+          id,
+          message: `✅ متن کامل با موفقیت استخراج شد (${data.data.text_length} کاراکتر)`,
+          ok: true
+        });
+      } else {
+        setRefetchFeedback({
+          id,
+          message: `❌ ${data.error || 'خطا در استخراج متن'}`,
+          ok: false
+        });
+      }
+    } catch (err: any) {
+      setRefetchFeedback({
+        id,
+        message: `❌ خطا: ${err.message}`,
+        ok: false
+      });
+    } finally {
+      setRefetchingId(null);
+      setTimeout(() => setRefetchFeedback(null), 5000);
+    }
+  };
+
+  // 2. Test live HTMLRewriter extraction on any URL
+  const handleTestLiveExtract = async (overrideUrl?: string) => {
+    const target = (overrideUrl || testUrl).trim();
+    if (!target || !target.startsWith('http')) return;
+    setIsTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch('/api/extract-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: target }),
+      });
+      const data = await res.json();
+      if (data.success && data.data) {
+        setTestResult(data.data);
+      } else {
+        setTestResult({ error: data.error || 'خطا در استخراج محتوا از این آدرس' });
+      }
+    } catch (err: any) {
+      setTestResult({ error: err.message });
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  // 3. Apply extracted content into current article draft
+  const handleApplyExtractedToArticle = (extractedContent: string) => {
+    if (!selectedArticleId || !extractedContent) return;
+    setDetailsMap((prev) => ({
+      ...prev,
+      [selectedArticleId]: {
+        ...prev[selectedArticleId],
+        content: extractedContent,
+      }
+    }));
+    setIsTesterOpen(false);
+    setRefetchFeedback({
+      id: selectedArticleId,
+      message: '✅ متن استخراج‌شده به عنوان متن انگلیسی مقاله اعمال شد.',
+      ok: true
+    });
+    setTimeout(() => setRefetchFeedback(null), 4000);
+  };
+
   const pendingCount = news.filter((n) => !n.translated_title && n.translation_status !== 'completed').length;
   const translatedCount = news.filter((n) => !!n.translated_title || n.translation_status === 'completed').length;
   const publishedCount = news.filter((n) => n.wp_sync_status === 'published' || n.telegram_sync_status === 'published').length;
@@ -245,6 +366,21 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
+          <button
+            onClick={() => {
+              if (selectedArticle) {
+                setTestUrl(selectedArticle.link || selectedArticle.original_url || 'https://cointelegraph.com/news/bitcoin-etf-inflows-reach-record-high');
+              } else {
+                setTestUrl('https://cointelegraph.com/news/bitcoin-etf-inflows-reach-record-high');
+              }
+              setIsTesterOpen(true);
+            }}
+            className="bg-sky-50 border border-sky-200 hover:bg-sky-100 text-sky-800 text-xs font-bold px-3.5 py-2 rounded-xl transition-all shadow-2xs flex items-center gap-2 cursor-pointer"
+          >
+            <Zap className="w-3.5 h-3.5 text-sky-600" />
+            <span>تحلیل‌گر و تست استخراج HTMLRewriter</span>
+          </button>
+
           <button
             onClick={onTriggerScraper}
             disabled={isTriggeringScraper}
@@ -640,15 +776,39 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
                     {(contentViewMode === 'split' || contentViewMode === 'english') && (
                       <div className="bg-slate-50 border border-gray-200 rounded-2xl p-4 flex flex-col justify-between shadow-2xs">
                         <div>
-                          <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-200">
+                          <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-200 gap-2 flex-wrap">
                             <span className="text-xs font-bold text-sky-800 flex items-center gap-1.5">
                               <Globe className="w-3.5 h-3.5 text-sky-600" />
-                              <span>متن اصلی خبر (Original English Source)</span>
+                              <span>متن اصلی خبر (Original Source)</span>
                             </span>
-                            <span className="text-[10px] text-gray-400 font-mono">
-                              {fullContent ? `${fullContent.length} chars` : 'RSS Feed'}
-                            </span>
+
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => handleRefetchFullText(selectedArticle.id)}
+                                disabled={refetchingId === selectedArticle.id}
+                                title="استخراج متن کامل و تمیز از وب‌سایت منبع با موتور HTMLRewriter"
+                                className="text-[10px] text-sky-700 hover:text-sky-900 bg-sky-100/70 hover:bg-sky-200/70 border border-sky-200 px-2 py-0.5 rounded-lg flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                              >
+                                <Zap className={`w-3 h-3 text-sky-600 ${refetchingId === selectedArticle.id ? 'animate-spin' : ''}`} />
+                                <span>{refetchingId === selectedArticle.id ? 'در حال استخراج...' : '⚡ استخراج متن کامل (HTMLRewriter)'}</span>
+                              </button>
+
+                              <span className="text-[10px] text-gray-400 font-mono px-1.5 py-0.5 bg-white rounded border border-gray-200">
+                                {fullContent ? `${fullContent.length} chars` : 'RSS Feed'}
+                              </span>
+                            </div>
                           </div>
+
+                          {/* Refetch Feedback */}
+                          {refetchFeedback && refetchFeedback.id === selectedArticle.id && (
+                            <div className={`mb-2 p-2 rounded-xl text-[11px] font-bold border flex items-center justify-between ${
+                              refetchFeedback.ok
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                : 'bg-rose-50 text-rose-800 border-rose-200'
+                            }`}>
+                              <span>{refetchFeedback.message}</span>
+                            </div>
+                          )}
 
                           <div className={`overflow-y-auto text-xs text-gray-700 font-mono ltr text-left leading-relaxed bg-white p-3 rounded-xl border border-gray-200 whitespace-pre-line ${contentViewMode === 'split' ? 'max-h-[260px]' : 'max-h-[300px]'}`}>
                             {fullContent || selectedArticle.content || selectedArticle.summary || 'متن انگلیسی خامی در دسترس نیست.'}
@@ -845,6 +1005,326 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
                 یک خبر را از ستون کناری برای مشاهده یا ویرایش انتخاب کنید.
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* HTMLRewriter & Content Cleaner Live Inspector Modal */}
+      {isTesterOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-gray-200 shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-slate-50/80">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-sky-500/10 text-sky-600 flex items-center justify-center">
+                  <Zap className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900">
+                    آزمایشگاه و تحلیل‌گر استخراج متن (Cloudflare HTMLRewriter)
+                  </h3>
+                  <p className="text-[11px] text-gray-500">
+                    استخراج تمیز متن کامل اخبار، حذف خودکار تبلیغات و نویزها با موتور ابری
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsTesterOpen(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-700 rounded-xl hover:bg-gray-200/50 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* URL Input & Quick Links */}
+            <div className="p-4 border-b border-gray-100 space-y-3 bg-white">
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Globe className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="url"
+                    value={testUrl}
+                    onChange={(e) => setTestUrl(e.target.value)}
+                    placeholder="https://cointelegraph.com/news/..."
+                    className="w-full pl-3 pr-9 py-2.5 text-xs font-mono bg-gray-50 border border-gray-200 rounded-xl focus:bg-white focus:border-sky-500 focus:outline-none transition-colors ltr text-left"
+                  />
+                </div>
+
+                <button
+                  onClick={() => handleTestLiveExtract()}
+                  disabled={isTesting || !testUrl.trim()}
+                  className="bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white text-xs font-bold px-5 py-2.5 rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer shrink-0"
+                >
+                  <Zap className={`w-4 h-4 ${isTesting ? 'animate-spin' : ''}`} />
+                  <span>{isTesting ? 'در حال استخراج...' : 'شروع استخراج'}</span>
+                </button>
+              </div>
+
+              {/* Quick source presets */}
+              <div className="flex items-center gap-2 text-[11px] text-gray-500 flex-wrap">
+                <span className="font-bold text-gray-700">نمونه‌ها:</span>
+                {selectedArticle?.link && (
+                  <button
+                    onClick={() => {
+                      const url = selectedArticle.link || selectedArticle.original_url || '';
+                      setTestUrl(url);
+                      handleTestLiveExtract(url);
+                    }}
+                    className="text-sky-700 hover:underline bg-sky-50 px-2 py-0.5 rounded-md border border-sky-100"
+                  >
+                    خبر انتخاب‌شده جاری ({selectedArticle.source_name || 'فعلی'})
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    const sample = 'https://cointelegraph.com/news/crypto-market-rebound-fed-rate-cut';
+                    setTestUrl(sample);
+                    handleTestLiveExtract(sample);
+                  }}
+                  className="text-gray-600 hover:text-gray-900 bg-gray-100 px-2 py-0.5 rounded-md"
+                >
+                  Cointelegraph
+                </button>
+                <button
+                  onClick={() => {
+                    const sample = 'https://decrypt.co/news-explorer';
+                    setTestUrl(sample);
+                    handleTestLiveExtract(sample);
+                  }}
+                  className="text-gray-600 hover:text-gray-900 bg-gray-100 px-2 py-0.5 rounded-md"
+                >
+                  Decrypt
+                </button>
+                <button
+                  onClick={() => {
+                    const sample = 'https://www.coindesk.com/markets';
+                    setTestUrl(sample);
+                    handleTestLiveExtract(sample);
+                  }}
+                  className="text-gray-600 hover:text-gray-900 bg-gray-100 px-2 py-0.5 rounded-md"
+                >
+                  CoinDesk
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Body & Results */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/40">
+              {/* Tab Selector */}
+              {testResult && !testResult.error && (
+                <div className="flex items-center justify-between border-b border-gray-200 pb-3 flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5 bg-gray-100 p-1 rounded-xl">
+                    <button
+                      onClick={() => setTesterTab('preview')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                        testerTab === 'preview' ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-600'
+                      }`}
+                    >
+                      متن تمیز استخراج‌شده
+                    </button>
+                    <button
+                      onClick={() => setTesterTab('rules')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                        testerTab === 'rules' ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-600'
+                      }`}
+                    >
+                      فیلترها و قوانین پاک‌سازی
+                    </button>
+                    <button
+                      onClick={() => setTesterTab('raw')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                        testerTab === 'raw' ? 'bg-white text-gray-900 shadow-2xs' : 'text-gray-600'
+                      }`}
+                    >
+                      ساختار داده و خروجی خام
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg flex items-center gap-1">
+                      <Cpu className="w-3 h-3 text-emerald-600" />
+                      <span>{testResult.engine_used === 'cloudflare_htmlrewriter' ? 'Cloudflare HTMLRewriter' : 'Node DOM Engine'}</span>
+                    </span>
+
+                    {selectedArticle && testResult.full_text && (
+                      <button
+                        onClick={() => handleApplyExtractedToArticle(testResult.full_text)}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        <span>اعمال به خبر انتخابی در میز کار</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Testing Loading State */}
+              {isTesting && (
+                <div className="h-64 bg-white rounded-2xl border border-gray-200 flex flex-col items-center justify-center gap-3">
+                  <RefreshCw className="w-8 h-8 animate-spin text-sky-600" />
+                  <p className="text-xs font-bold text-gray-700">در حال دریافت صفحه وب و استخراج متن با موتور Cloudflare HTMLRewriter...</p>
+                  <p className="text-[11px] text-gray-400">حذف خودکار تبلیغات، کادرهای شبکه‌های اجتماعی، دیسکلیمرها و نوارهای قیمت</p>
+                </div>
+              )}
+
+              {/* Error State */}
+              {testResult?.error && !isTesting && (
+                <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs space-y-1">
+                  <p className="font-bold">خطا در فرآیند استخراج:</p>
+                  <p>{testResult.error}</p>
+                </div>
+              )}
+
+              {/* Result: Preview Tab */}
+              {testResult && !testResult.error && !isTesting && testerTab === 'preview' && (
+                <div className="space-y-4">
+                  {/* Stats Ribbon */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="bg-white p-3 rounded-2xl border border-gray-200">
+                      <span className="text-[10px] text-gray-400 block">تعداد کاراکتر:</span>
+                      <span className="text-sm font-bold text-gray-900 font-mono">{testResult.stats?.char_count || testResult.text_length || 0}</span>
+                    </div>
+                    <div className="bg-white p-3 rounded-2xl border border-gray-200">
+                      <span className="text-[10px] text-gray-400 block">تعداد پاراگراف‌ها:</span>
+                      <span className="text-sm font-bold text-gray-900 font-mono">{testResult.stats?.paragraph_count || testResult.paragraphs_count || 0}</span>
+                    </div>
+                    <div className="bg-white p-3 rounded-2xl border border-gray-200">
+                      <span className="text-[10px] text-gray-400 block">تیترهای H2/H3:</span>
+                      <span className="text-sm font-bold text-gray-900 font-mono">{testResult.stats?.heading_count || (testResult.headings || []).length}</span>
+                    </div>
+                    <div className="bg-white p-3 rounded-2xl border border-gray-200">
+                      <span className="text-[10px] text-gray-400 block">تصاویر شناسایی‌شده:</span>
+                      <span className="text-sm font-bold text-gray-900 font-mono">{testResult.images_count || 0}</span>
+                    </div>
+                  </div>
+
+                  {/* Title & Author */}
+                  <div className="bg-white p-4 rounded-2xl border border-gray-200 space-y-2">
+                    <h4 className="text-sm font-bold text-gray-900 ltr text-left">{testResult.title || 'بدون تیتر مستقیم'}</h4>
+                    {testResult.author && (
+                      <p className="text-xs text-sky-700 font-medium">نویسنده: {testResult.author}</p>
+                    )}
+                  </div>
+
+                  {/* Extracted Text Box */}
+                  <div className="bg-white p-4 rounded-2xl border border-gray-200 space-y-2">
+                    <div className="flex items-center justify-between pb-2 border-b border-gray-100">
+                      <span className="text-xs font-bold text-gray-800">متن کامل و پاک‌سازی شده (Clean Text Body):</span>
+                      <button
+                        onClick={() => handleCopyText(testResult.full_text, -99)}
+                        className="text-[10px] text-gray-600 hover:text-gray-900 bg-gray-50 border border-gray-200 px-2 py-0.5 rounded flex items-center gap-1"
+                      >
+                        {copiedId === -99 ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                        <span>{copiedId === -99 ? 'کپی شد' : 'کپی کل متن'}</span>
+                      </button>
+                    </div>
+                    <div className="max-h-[340px] overflow-y-auto text-xs text-gray-800 font-mono ltr text-left leading-relaxed whitespace-pre-line bg-slate-50/70 p-3 rounded-xl border border-gray-200">
+                      {testResult.full_text}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Result: Rules Tab */}
+              {testResult && !testResult.error && !isTesting && testerTab === 'rules' && (
+                <div className="bg-white p-4 rounded-2xl border border-gray-200 space-y-4">
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                      <Filter className="w-4 h-4 text-orange-500" />
+                      قوانین و فیلترهای فعال پاک‌سازی متن (Active Extraction Rules)
+                    </h4>
+                    <p className="text-[11px] text-gray-500 mt-1">
+                      این قوانین به طور خودکار عناصر زائد و هرزنامه‌های صفحات وب را قبل از ارسال به مدل هوش مصنوعی پاک می‌کنند:
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="p-3 bg-slate-50 rounded-xl border border-gray-200 space-y-1">
+                      <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        حذف کادرهای تبلیغاتی و بنرها
+                      </span>
+                      <p className="text-[11px] text-gray-500">
+                        حذف تگ‌های <code>.ad</code>، <code>.advertisement</code>، <code>.banner</code>، <code>.sponsor</code>
+                      </p>
+                    </div>
+
+                    <div className="p-3 bg-slate-50 rounded-xl border border-gray-200 space-y-1">
+                      <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        حذف نوارهای قیمت و بازارهای زنده
+                      </span>
+                      <p className="text-[11px] text-gray-500">
+                        پاک‌سازی نمادهای کریپتو و قیمت‌های لحظه‌ای در سربرگ صفحات Cointelegraph و CoinDesk
+                      </p>
+                    </div>
+
+                    <div className="p-3 bg-slate-50 rounded-xl border border-gray-200 space-y-1">
+                      <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        حذف لینک‌های درون متنی (Related Articles)
+                      </span>
+                      <p className="text-[11px] text-gray-500">
+                        حذف بلوک‌های <code>Related: ...</code> و <code>Read More</code> که وسط متن خبر قرار دارند
+                      </p>
+                    </div>
+
+                    <div className="p-3 bg-slate-50 rounded-xl border border-gray-200 space-y-1">
+                      <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        حذف پلیرهای صوتی و پادکست‌ها
+                      </span>
+                      <p className="text-[11px] text-gray-500">
+                        حذف تگ‌های <code>audio</code>، <code>.audio-player</code> و <code>.listen-to-article</code>
+                      </p>
+                    </div>
+
+                    <div className="p-3 bg-slate-50 rounded-xl border border-gray-200 space-y-1">
+                      <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        حذف سلب مسئولیت و پاورقی‌ها
+                      </span>
+                      <p className="text-[11px] text-gray-500">
+                        قطع هوشمند متن در بخش <code>Disclaimer</code> و اطلاعات کپی‌رایت
+                      </p>
+                    </div>
+
+                    <div className="p-3 bg-slate-50 rounded-xl border border-gray-200 space-y-1">
+                      <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        حذف کوکی و پاپ‌آپ‌های اشتراک خبرنامه
+                      </span>
+                      <p className="text-[11px] text-gray-500">
+                        حذف فرم‌های <code>Subscribe to newsletter</code> و دکمه‌های سوشال مدیا
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Result: Raw JSON Tab */}
+              {testResult && !testResult.error && !isTesting && testerTab === 'raw' && (
+                <div className="bg-white p-4 rounded-2xl border border-gray-200 space-y-2">
+                  <span className="text-xs font-bold text-gray-800">خروجی JSON کامل:</span>
+                  <pre className="max-h-[340px] overflow-y-auto text-[11px] text-gray-700 font-mono ltr text-left bg-slate-900 text-slate-100 p-3 rounded-xl">
+                    {JSON.stringify(testResult, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              {/* Empty Initial State */}
+              {!testResult && !isTesting && (
+                <div className="h-48 bg-white rounded-2xl border border-dashed border-gray-300 flex flex-col items-center justify-center text-center p-6 space-y-2">
+                  <Zap className="w-8 h-8 text-sky-400" />
+                  <p className="text-xs font-bold text-gray-700">آدرس اینترنتی خبر را وارد کنید و دکمه «شروع استخراج» را بزنید</p>
+                  <p className="text-[11px] text-gray-400 max-w-md">
+                    موتور Cloudflare HTMLRewriter صفحه وب را دریافت و تمام متن اصلی را به همراه تصاویر و تیترها بدون تبلیغات استخراج می‌کند.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -267,6 +267,8 @@ export async function scrapeCointelegraph(env: Env, options?: { maxItems?: numbe
 /**
  * 2. Downloads full article HTML from the web page and extracts clean structured body text, author, and media
  */
+import { extractArticleFullText } from './htmlRewriterExtractor';
+
 export async function scrapeFullArticle(env: Env, url: string): Promise<{
   full_text: string;
   html_content: string;
@@ -274,196 +276,16 @@ export async function scrapeFullArticle(env: Env, url: string): Promise<{
   images: Array<{ url: string; alt?: string; is_featured: number }>;
   featured_image: string | null;
 }> {
-  console.log(`[Scraper] Fetching full article webpage from URL: ${url}`);
-
-  const defaultResult = {
-    full_text: '',
-    html_content: '',
-    author: null,
-    images: [],
-    featured_image: null,
+  const result = await extractArticleFullText(url);
+  return {
+    full_text: result.full_text,
+    html_content: result.html_content || '',
+    author: result.author || 'Cointelegraph',
+    images: result.images,
+    featured_image: result.featured_image,
   };
-
-  if (!url || !url.startsWith('http')) return defaultResult;
-
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 CointelegraphNewsReader/1.0',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Cache-Control': 'no-cache',
-      },
-      signal: AbortSignal.timeout(14000),
-    });
-
-    if (!response.ok) {
-      console.warn(`[Scraper] Webpage HTTP ${response.status} for ${url}`);
-      return defaultResult;
-    }
-
-    const html = await response.text();
-    const $ = cheerio.load(html);
-
-    // Extract Author
-    const author = $('meta[name="author"]').attr('content') ||
-      $('[data-testid="author-link"], .post-meta__author, a[rel="author"], [class*="author-link"]').first().text().trim() ||
-      $('[class*="author"]').first().text().trim() ||
-      'Cointelegraph';
-
-    // Extract Featured Image from OpenGraph / Twitter meta tags
-    let featuredImage = $('meta[property="og:image"]').attr('content') ||
-      $('meta[name="twitter:image"]').attr('content') ||
-      $('meta[name="twitter:image:src"]').attr('content') ||
-      null;
-
-    // Target Cointelegraph main content container
-    // Cointelegraph uses .post-content, div.post-content, article, [class*="post-content_"]
-    let $container = $('.post-content, [class*="post-content_"], .post__content, article .post-content').first();
-    if ($container.length === 0) {
-      $container = $('article').first();
-    }
-    if ($container.length === 0) {
-      $container = $('[class*="post-body"], [class*="StoryBody"], main').first();
-    }
-    if ($container.length === 0) {
-      $container = $('body');
-    }
-
-    // Clone container to clean without destroying original
-    const $body = $container.clone();
-
-    // 1. Remove all noise, scripts, ads, social bars, and trackers
-    $body.find([
-      'script', 'style', 'noscript', 'iframe', 'svg', 'button', 'form', 'nav', 'header', 'footer',
-      '[data-testid="ad-slot"]', '.ad', '.advertisement', '[class*="ad-"]', '[class*="banner"]', '[class*="banner_"]',
-      '[class*="social"]', '[class*="share"]', '[class*="reaction"]', '[class*="post-actions"]', '[class*="actions_"]',
-      '[class*="related-articles"]', '[class*="related-posts"]', '[class*="related_"]', '[class*="recommended-"]',
-      '[class*="newsletter"]', '[class*="promo"]', '[class*="subscribe"]', '[class*="podcast"]', '[class*="telegram-widget"]',
-      '[class*="audio-player"]', '[class*="podcast-player"]', '[class*="player_"]',
-      '[class*="disclaimer"]', '[class*="disclosure"]', '[class*="terms"]',
-      '[class*="ticker"]', '[class*="coin-index"]', '[class*="price-index"]',
-      '[class*="author-block"]', '[class*="post-meta"]', '[class*="post-header"]'
-    ].join(', ')).remove();
-
-    // 2. Extract Lead / Key Takeaway paragraph if present
-    const leadText = $('.post__lead, [class*="post__lead"], [class*="post-lead"], [data-testid="post-lead"]').first().text().trim();
-
-    // 3. Extract Clean Paragraphs and Structure
-    const cleanParagraphs: string[] = [];
-    if (leadText && leadText.length > 25) {
-      cleanParagraphs.push(leadText);
-    }
-
-    $body.find('p, h2, h3, blockquote, ul').each((_, el) => {
-      const tagName = el.tagName?.toLowerCase();
-      const text = $(el).text().trim();
-
-      if (!text || text.length < 6) return;
-
-      // Filter out unwanted noise lines for Cointelegraph
-      const lower = text.toLowerCase();
-      if (
-        lower.startsWith('related:') ||
-        lower.startsWith('related :') ||
-        lower.startsWith('read more:') ||
-        lower.startsWith('magazine:') ||
-        lower.startsWith('disclaimer:') ||
-        lower.includes('produced in accordance with') ||
-        lower.includes('does not contain investment advice') ||
-        lower.includes('subscribe to our newsletter') ||
-        lower.includes('follow us on telegram') ||
-        lower.includes('follow us on x') ||
-        lower.includes('follow us on twitter') ||
-        lower.startsWith('source:') ||
-        lower.includes('all rights reserved')
-      ) {
-        return;
-      }
-
-      if (tagName === 'h2') {
-        cleanParagraphs.push(`## ${text}`);
-      } else if (tagName === 'h3') {
-        cleanParagraphs.push(`### ${text}`);
-      } else if (tagName === 'blockquote') {
-        cleanParagraphs.push(`> ${text}`);
-      } else if (tagName === 'ul') {
-        const items: string[] = [];
-        $(el).find('li').each((_, li) => {
-          const liText = $(li).text().trim();
-          if (liText && !liText.toLowerCase().includes('related')) {
-            items.push(`* ${liText}`);
-          }
-        });
-        if (items.length > 0) {
-          cleanParagraphs.push(items.join('\n'));
-        }
-      } else {
-        // Skip duplicate of leadText
-        if (leadText && text === leadText) return;
-        cleanParagraphs.push(text);
-      }
-    });
-
-    let fullText = cleanParagraphs.join('\n\n').trim();
-
-    // Fallback using Turndown if paragraph extraction was too short
-    const contentHtml = $body.html() || '';
-    if (fullText.length < 80 && contentHtml.length > 0) {
-      const turndownService = new TurndownService({
-        headingStyle: 'atx',
-        codeBlockStyle: 'fenced',
-      });
-      let markdown = turndownService.turndown(contentHtml);
-      markdown = sanitizeContent(markdown);
-      fullText = markdown.trim() || cleanText(contentHtml);
-    }
-
-    // 4. Extract all image references (Image URL and metadata only, no file storage)
-    const images: Array<{ url: string; alt?: string; is_featured: number }> = [];
-    const seenImageUrls = new Set<string>();
-
-    if (featuredImage) {
-      seenImageUrls.add(featuredImage);
-      images.push({ url: featuredImage, alt: 'Featured Image', is_featured: 1 });
-    }
-
-    $('img').each((_, el) => {
-      const src = $(el).attr('src') || $(el).attr('data-src') || $(el).attr('srcset')?.split(' ')[0];
-      const alt = $(el).attr('alt') || '';
-      if (
-        src &&
-        src.startsWith('http') &&
-        !seenImageUrls.has(src) &&
-        !src.includes('avatar') &&
-        !src.includes('logo') &&
-        !src.includes('icon') &&
-        !src.includes('badge')
-      ) {
-        seenImageUrls.add(src);
-        images.push({
-          url: src,
-          alt: alt.trim() || 'Article Image',
-          is_featured: !featuredImage ? 1 : 0,
-        });
-        if (!featuredImage) featuredImage = src;
-      }
-    });
-
-    console.log(`[Scraper] Extracted clean text (${fullText.length} chars, ${images.length} images) from ${url}`);
-
-    return {
-      full_text: fullText,
-      html_content: contentHtml,
-      author: author || 'Cointelegraph',
-      images,
-      featured_image: featuredImage,
-    };
-  } catch (err: any) {
-    console.error(`[Scraper] Error scraping full article ${url}:`, err.message);
-    return defaultResult;
-  }
 }
+
 
 /**
  * 3. Saves article metadata, full webpage text, and images into D1 Primary (`news_db`)

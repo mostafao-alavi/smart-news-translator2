@@ -1035,30 +1035,37 @@ api.post('/trigger-scraper', async (c) => {
   }
 });
 
-// POST /api/extract-preview - Test live web extraction on any news article URL
+// POST /api/extract-preview - Test live web extraction on any news article URL with Cloudflare HTMLRewriter
 api.post('/extract-preview', async (c) => {
   try {
-    const body = await c.req.json<{ url: string }>().catch(() => ({ url: '' }));
+    const body = await c.req.json<{ url: string; customRules?: any }>().catch(() => ({ url: '', customRules: undefined }));
     const targetUrl = (body.url || '').trim();
 
     if (!targetUrl || !targetUrl.startsWith('http')) {
       return c.json({ success: false, data: null, error: 'آدرس URL معتبر وارد نشده است.' }, 400);
     }
 
-    const { scrapeFullArticle } = await import('../cron/scraper');
-    const result = await scrapeFullArticle(c.env, targetUrl);
+    const { extractArticleFullText, DEFAULT_CLEANING_RULES } = await import('../cron/htmlRewriterExtractor');
+    const result = await extractArticleFullText(targetUrl, body.customRules);
 
     return c.json({
       success: true,
       data: {
         url: targetUrl,
+        title: result.title,
         author: result.author,
         featured_image: result.featured_image,
-        images_count: result.images.length,
-        images: result.images,
+        lead_text: result.lead_text,
         full_text: result.full_text,
-        text_length: result.full_text.length,
-        paragraphs_count: result.full_text.split('\n\n').filter(p => p.trim().length > 0).length,
+        paragraphs: result.paragraphs,
+        headings: result.headings,
+        images: result.images,
+        images_count: result.images.length,
+        stats: result.stats,
+        text_length: result.stats.char_count,
+        paragraphs_count: result.stats.paragraph_count,
+        engine_used: result.engine_used,
+        active_rules: DEFAULT_CLEANING_RULES,
       },
       error: null,
     }, 200);
@@ -1088,10 +1095,11 @@ api.post('/articles/:id/refetch-content', async (c) => {
       return c.json({ success: false, data: null, error: 'آدرس خبر نامعتبر است.' }, 400);
     }
 
-    const { scrapeFullArticle, saveArticle } = await import('../cron/scraper');
-    const full = await scrapeFullArticle(c.env, articleUrl);
+    const { extractArticleFullText } = await import('../cron/htmlRewriterExtractor');
+    const { saveArticle } = await import('../cron/scraper');
+    const fullResult = await extractArticleFullText(articleUrl);
 
-    if (full.full_text) {
+    if (fullResult.full_text && fullResult.full_text.length >= 40) {
       await saveArticle(
         c.env,
         {
@@ -1100,10 +1108,14 @@ api.post('/articles/:id/refetch-content', async (c) => {
           link: articleUrl,
           summary: article.summary,
           published_at: article.published_at || new Date().toISOString(),
-          featured_image: article.featured_image || full.featured_image,
+          featured_image: article.featured_image || fullResult.featured_image,
         },
-        full,
-        full.images
+        {
+          full_text: fullResult.full_text,
+          html_content: fullResult.html_content,
+          author: fullResult.author,
+        },
+        fullResult.images
       );
 
       // Re-read updated article
@@ -1114,10 +1126,12 @@ api.post('/articles/:id/refetch-content', async (c) => {
         data: {
           id: articleId,
           title: updated?.title || article.title,
-          content: updated?.content || full.full_text,
-          featured_image: updated?.featured_image || full.featured_image,
-          text_length: full.full_text.length,
-          message: 'متن کامل خبر با موفقیت از صفحه وب بازخوانی و ذخیره شد.',
+          content: updated?.content || fullResult.full_text,
+          featured_image: updated?.featured_image || fullResult.featured_image,
+          text_length: fullResult.full_text.length,
+          stats: fullResult.stats,
+          engine_used: fullResult.engine_used,
+          message: `متن کامل خبر با موفقیت استخراج شد (${fullResult.stats.char_count} کاراکتر، ${fullResult.stats.paragraph_count} پاراگراف).`,
         },
         error: null,
       }, 200);
@@ -1125,7 +1139,7 @@ api.post('/articles/:id/refetch-content', async (c) => {
       return c.json({
         success: false,
         data: null,
-        error: 'امکان استخراج متن کامل از آدرس وب وجود نداشت.',
+        error: 'امکان استخراج متن کامل از آدرس وب وجود نداشت (پاسخ خالی یا مسدود).',
       }, 422);
     }
   } catch (err: any) {

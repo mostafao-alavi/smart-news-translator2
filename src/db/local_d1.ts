@@ -121,7 +121,7 @@ function executeMemoryQuery(query: string, params: any[] = []): { results?: any[
   const qLower = q.toLowerCase();
 
   // 1. COUNT queries
-  if (qLower.includes('count(')) {
+  if (qLower.includes('count(') || qLower.includes('count (*)')) {
     let tableName = 'articles';
     for (const tbl of Object.keys(memoryTables)) {
       if (qLower.includes(`from ${tbl}`)) {
@@ -132,14 +132,18 @@ function executeMemoryQuery(query: string, params: any[] = []): { results?: any[
     const rows = memoryTables[tableName] || [];
     let count = rows.length;
 
-    if (qLower.includes('is_active = 1')) {
+    if (qLower.includes('is_active = 1') || qLower.includes('is_active is null')) {
       count = rows.filter((r: any) => r.is_active === 1 || r.is_active === true || r.is_active === undefined).length;
     } else if (qLower.includes("translation_status = 'pending'")) {
-      count = rows.filter((r: any) => r.translation_status === 'pending').length;
+      count = rows.filter((r: any) => r.translation_status === 'pending' || !r.translation_status).length;
     } else if (qLower.includes("translation_status = 'completed'") || qLower.includes("status = 'translated'")) {
-      count = rows.filter((r: any) => r.translation_status === 'completed' || r.status === 'translated').length;
+      count = rows.filter((r: any) => r.translation_status === 'completed' || r.status === 'translated' || r.translated_title).length;
     } else if (qLower.includes("wp_sync_status = 'published'")) {
       count = rows.filter((r: any) => r.wp_sync_status === 'published').length;
+    } else if (qLower.includes("telegram_sync_status = 'published'")) {
+      count = rows.filter((r: any) => r.telegram_sync_status === 'published').length;
+    } else if (qLower.includes("target_platform = 'wordpress'") || qLower.includes("platform = 'wordpress'")) {
+      count = rows.filter((r: any) => r.platform === 'wordpress' || r.target_platform === 'wordpress').length;
     }
 
     return { results: [{ count }] };
@@ -156,20 +160,47 @@ function executeMemoryQuery(query: string, params: any[] = []): { results?: any[
     }
     let rows = [...(memoryTables[tableName] || [])];
 
-    // Check specific conditions
-    if (qLower.includes('where id = ?') && params.length > 0) {
-      const idToFind = Number(params[0]);
-      rows = rows.filter(r => r.id === idToFind);
+    // If querying articles with JOIN sources / translations, build joined objects
+    if (tableName === 'articles') {
+      rows = rows.map((art: any) => {
+        const src = (memoryTables['sources'] || []).find((s: any) => s.id === art.source_id) || { name: 'Cointelegraph' };
+        const trans = (memoryTables['translations'] || []).find((t: any) => t.article_id === art.id) || {};
+        return {
+          ...art,
+          source_name: src.name || 'Cointelegraph',
+          translated_title: trans.translated_title || art.translated_title || null,
+          translated_content: trans.translated_content || art.translated_content || null,
+          suggested_titles: trans.suggested_titles || art.suggested_titles || null,
+          tags: trans.tags || art.tags || null,
+          meta_description: trans.meta_description || art.meta_description || null,
+          model_used: trans.ai_model || trans.model_used || art.model_used || null,
+          ai_model: trans.ai_model || art.ai_model || null,
+          translated_at: trans.translated_at || art.translated_at || null,
+        };
+      });
+    }
+
+    // Check WHERE conditions
+    if ((qLower.includes('where id = ?') || qLower.includes('where articles.id = ?') || qLower.includes('where a.id = ?')) && params.length > 0) {
+      const targetId = Number(params[0]);
+      rows = rows.filter(r => r.id === targetId || String(r.id) === String(params[0]));
     } else if (qLower.includes('where article_id = ?') && params.length > 0) {
-      const artIdToFind = Number(params[0]);
-      rows = rows.filter(r => r.article_id === artIdToFind);
+      const targetArtId = Number(params[0]);
+      rows = rows.filter(r => r.article_id === targetArtId || String(r.article_id) === String(params[0]));
+    } else if (qLower.includes('where source_id = ?') && params.length > 0) {
+      const targetSrcId = Number(params[0]);
+      rows = rows.filter(r => r.source_id === targetSrcId || String(r.source_id) === String(params[0]));
+    } else if (qLower.includes('where original_url = ?') && params.length > 0) {
+      rows = rows.filter(r => r.original_url === params[0] || r.link === params[0]);
+    } else if (qLower.includes('where is_active = 1')) {
+      rows = rows.filter(r => r.is_active === 1 || r.is_active === true || r.is_active === undefined);
     }
 
     // Sorting
     if (qLower.includes('order by')) {
-      if (qLower.includes('created_at desc') || qLower.includes('id desc')) {
+      if (qLower.includes('created_at desc') || qLower.includes('id desc') || qLower.includes('articles.created_at desc')) {
         rows.sort((a, b) => (b.id || 0) - (a.id || 0));
-      } else if (qLower.includes('id asc')) {
+      } else if (qLower.includes('id asc') || qLower.includes('created_at asc')) {
         rows.sort((a, b) => (a.id || 0) - (b.id || 0));
       }
     }
@@ -177,23 +208,27 @@ function executeMemoryQuery(query: string, params: any[] = []): { results?: any[
     // Limit
     if (qLower.includes('limit ?') && params.length > 0) {
       const limitVal = Number(params[params.length - 1]);
-      if (!isNaN(limitVal)) {
+      if (!isNaN(limitVal) && limitVal > 0) {
         rows = rows.slice(0, limitVal);
       }
     } else if (qLower.includes('limit 50')) {
       rows = rows.slice(0, 50);
     } else if (qLower.includes('limit 30')) {
       rows = rows.slice(0, 30);
+    } else if (qLower.includes('limit 15')) {
+      rows = rows.slice(0, 15);
+    } else if (qLower.includes('limit 10')) {
+      rows = rows.slice(0, 10);
     }
 
     return { results: rows };
   }
 
   // 3. INSERT queries
-  if (qLower.startsWith('insert into')) {
+  if (qLower.startsWith('insert into') || qLower.startsWith('insert or ignore into') || qLower.startsWith('insert or replace into')) {
     let tableName = 'articles';
     for (const tbl of Object.keys(memoryTables)) {
-      if (qLower.includes(`insert into ${tbl}`)) {
+      if (qLower.includes(`into ${tbl}`)) {
         tableName = tbl;
         break;
       }
@@ -221,6 +256,25 @@ function executeMemoryQuery(query: string, params: any[] = []): { results?: any[
       newRow.published_at = params[5] || new Date().toISOString();
       newRow.translation_status = 'pending';
       newRow.wp_sync_status = 'pending';
+    } else if (tableName === 'translations') {
+      newRow.article_id = params[0];
+      newRow.target_language = params[1] || 'persian';
+      newRow.translated_title = params[2] || '';
+      newRow.translated_content = params[3] || '';
+      newRow.translated_at = new Date().toISOString();
+      newRow.model_used = params[4] || 'workers-ai';
+      newRow.ai_model = params[5] || params[4] || 'workers-ai';
+      newRow.suggested_titles = params[6] || '[]';
+      newRow.tags = params[7] || '';
+      newRow.meta_description = params[8] || '';
+      
+      // Update article record status too
+      const art = (memoryTables['articles'] || []).find((a: any) => a.id === Number(params[0]));
+      if (art) {
+        art.translation_status = 'completed';
+        art.translated_title = newRow.translated_title;
+        art.translated_content = newRow.translated_content;
+      }
     } else if (tableName === 'execution_logs') {
       newRow.task_type = params[0] || '';
       newRow.status = params[1] || '';
@@ -250,6 +304,36 @@ function executeMemoryQuery(query: string, params: any[] = []): { results?: any[
         break;
       }
     }
+
+    if (tableName === 'sources' && qLower.includes('where id = ?') && params.length > 0) {
+      const idToUpdate = Number(params[params.length - 1]);
+      const src = (memoryTables['sources'] || []).find((s: any) => s.id === idToUpdate);
+      if (src) {
+        if (params.length >= 7) {
+          src.name = params[0] || src.name;
+          src.url = params[1] || src.url;
+          src.language = params[2] || src.language;
+          src.category = params[3] || src.category;
+          src.selector = params[4] || src.selector;
+          src.scrape_limit = params[5] || src.scrape_limit;
+          src.is_active = params[6] !== undefined ? (params[6] ? 1 : 0) : src.is_active;
+        } else if (qLower.includes('is_active = ?')) {
+          src.is_active = params[0] ? 1 : 0;
+        }
+      }
+    } else if (tableName === 'articles' && qLower.includes('where id = ?') && params.length > 0) {
+      const idToUpdate = Number(params[params.length - 1]);
+      const art = (memoryTables['articles'] || []).find((a: any) => a.id === idToUpdate);
+      if (art) {
+        if (qLower.includes('content = ?') && qLower.includes('featured_image = ?')) {
+          art.content = params[0];
+          art.featured_image = params[1] || art.featured_image;
+        } else if (qLower.includes('translation_status = ?')) {
+          art.translation_status = params[0];
+        }
+      }
+    }
+
     return { meta: { changes: 1 } };
   }
 
@@ -266,6 +350,10 @@ function executeMemoryQuery(query: string, params: any[] = []): { results?: any[
       const idToDel = Number(params[0]);
       if (memoryTables[tableName]) {
         memoryTables[tableName] = memoryTables[tableName].filter(r => r.id !== idToDel);
+      }
+    } else if (!qLower.includes('where')) {
+      if (memoryTables[tableName]) {
+        memoryTables[tableName] = [];
       }
     }
     return { meta: { changes: 1 } };
@@ -287,9 +375,14 @@ export const mockD1 = {
             const res = executeMemoryQuery(query, params);
             return { success: true, meta: res.meta || { changes: 1, last_row_id: 1 } };
           },
-          first: async <T = any>() => {
+          first: async <T = any>(colName?: string) => {
             const res = executeMemoryQuery(query, params);
-            return (res.results && res.results.length > 0 ? res.results[0] : null) as T;
+            const row = (res.results && res.results.length > 0 ? res.results[0] : null);
+            if (!row) return null;
+            if (colName && typeof colName === 'string') {
+              return (row[colName] !== undefined ? row[colName] : null) as T;
+            }
+            return row as T;
           }
         };
       },
@@ -301,9 +394,14 @@ export const mockD1 = {
         const res = executeMemoryQuery(query, []);
         return { success: true, meta: res.meta || { changes: 1, last_row_id: 1 } };
       },
-      first: async <T = any>() => {
+      first: async <T = any>(colName?: string) => {
         const res = executeMemoryQuery(query, []);
-        return (res.results && res.results.length > 0 ? res.results[0] : null) as T;
+        const row = (res.results && res.results.length > 0 ? res.results[0] : null);
+        if (!row) return null;
+        if (colName && typeof colName === 'string') {
+          return (row[colName] !== undefined ? row[colName] : null) as T;
+        }
+        return row as T;
       }
     };
   },
