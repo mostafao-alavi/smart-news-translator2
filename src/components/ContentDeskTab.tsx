@@ -64,6 +64,7 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
   // Lazy loading article detail (content & translated content)
   const [detailsMap, setDetailsMap] = useState<Record<number, { content?: string; translated_content?: string; translated_title?: string; featured_image?: string; tags?: string[] | string }>>({});
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [contentViewMode, setContentViewMode] = useState<'split' | 'persian' | 'english'>('split');
 
   // Error fallback
   if (error) {
@@ -494,88 +495,169 @@ export const ContentDeskTab: React.FC<ContentDeskTabProps> = ({
                   </div>
                 )}
 
-                {/* Persian Translated Title */}
-                <div>
-                  <label className="text-[11px] font-bold text-gray-500 block mb-1">
-                    عنوان فارسی خبر:
-                  </label>
-                  <input
-                    type="text"
-                    value={currentTitle || ''}
-                    onChange={(e) => {
-                      if (!selectedArticleId) return;
-                      setDetailsMap((prev) => ({
-                        ...prev,
-                        [selectedArticleId]: {
-                          ...prev[selectedArticleId],
-                          translated_title: e.target.value
-                        }
-                      }));
-                    }}
-                    placeholder="هنوز ترجمه نشده است..."
-                    className="w-full font-bold text-gray-900 text-sm bg-gray-50/70 border border-gray-200 rounded-xl px-3.5 py-2.5 focus:bg-white focus:border-orange-500 focus:outline-none transition-colors"
-                  />
-                </div>
-
-                {/* Original English Title */}
-                <div className="bg-gray-50 rounded-xl p-3 border border-gray-200/70 text-xs text-gray-600 font-mono ltr leading-relaxed">
-                  <span className="text-[10px] uppercase font-bold text-gray-400 block mb-1 rtl font-sans">
-                    تیتر انگلیسی:
-                  </span>
-                  {selectedArticle.title}
-                </div>
-
-                {/* Persian Content Text */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[11px] font-bold text-gray-500">
-                      متن ترجمه شده:
+                {/* Persian Translated Title & English Title */}
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-gray-700 flex items-center justify-between mb-1">
+                      <span>عنوان فارسی خبر (قابل ویرایش):</span>
+                      {selectedArticle.translated_title && (
+                        <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded">
+                          ترجمه شده
+                        </span>
+                      )}
                     </label>
-                    {fullTranslatedContent && (
-                      <button
-                        onClick={() => handleCopyText(fullTranslatedContent, selectedArticle.id)}
-                        className="text-[10px] text-gray-500 hover:text-gray-900 flex items-center gap-1"
-                      >
-                        {copiedId === selectedArticle.id ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                        <span>{copiedId === selectedArticle.id ? 'کپی شد' : 'کپی متن'}</span>
-                      </button>
-                    )}
-                  </div>
-
-                  {loadingDetail ? (
-                    <div className="h-40 bg-gray-50 rounded-xl border border-gray-200 flex items-center justify-center text-xs text-gray-400 animate-pulse">
-                      در حال بارگذاری متن مقاله...
-                    </div>
-                  ) : fullTranslatedContent ? (
-                    <textarea
-                      value={fullTranslatedContent || ''}
+                    <input
+                      type="text"
+                      value={currentTitle || ''}
                       onChange={(e) => {
                         if (!selectedArticleId) return;
                         setDetailsMap((prev) => ({
                           ...prev,
                           [selectedArticleId]: {
                             ...prev[selectedArticleId],
-                            translated_content: e.target.value
+                            translated_title: e.target.value
                           }
                         }));
                       }}
-                      rows={8}
-                      className="w-full text-xs text-gray-800 leading-relaxed bg-gray-50/70 border border-gray-200 rounded-xl p-3.5 focus:bg-white focus:border-orange-500 focus:outline-none transition-colors"
+                      placeholder="هنوز ترجمه نشده است..."
+                      className="w-full font-bold text-gray-900 text-sm bg-gray-50/70 border border-gray-200 rounded-xl px-3.5 py-2.5 focus:bg-white focus:border-orange-500 focus:outline-none transition-colors"
                     />
-                  ) : (
-                    <div className="p-6 bg-amber-50/40 rounded-xl border border-amber-200 text-center space-y-2">
-                      <p className="text-xs font-bold text-amber-800">این خبر هنوز ترجمه نشده است</p>
-                      <button
-                        onClick={() => handleSingleTranslate(selectedArticle.id)}
-                        disabled={translatingId === selectedArticle.id}
-                        className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-4 py-2 rounded-xl transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                      >
-                        <Sparkles className={`w-3.5 h-3.5 ${translatingId === selectedArticle.id ? 'animate-spin' : ''}`} />
-                        <span>{translatingId === selectedArticle.id ? 'در حال ترجمه...' : 'ترجمه فوری با هوش مصنوعی'}</span>
-                      </button>
-                    </div>
-                  )}
+                  </div>
+
+                  <div className="bg-gray-50/80 rounded-xl p-3 border border-gray-200/70 text-xs text-gray-600 font-mono ltr leading-relaxed">
+                    <span className="text-[10px] uppercase font-bold text-gray-400 block mb-1 rtl font-sans">
+                      تیتر انگلیسی اصلی (Original English Title):
+                    </span>
+                    {selectedArticle.title}
+                  </div>
                 </div>
+
+                {/* View Switcher: Split / Persian Only / English Only */}
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                  <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                    <Layers className="w-3.5 h-3.5 text-orange-500" />
+                    <span>نمای تطبیقی محتوا:</span>
+                  </span>
+
+                  <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl border border-gray-200">
+                    <button
+                      onClick={() => setContentViewMode('split')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        contentViewMode === 'split'
+                          ? 'bg-white text-orange-600 shadow-2xs'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      <Layers className="w-3 h-3" />
+                      <span>تطبیقی (کنار هم)</span>
+                    </button>
+                    <button
+                      onClick={() => setContentViewMode('persian')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        contentViewMode === 'persian'
+                          ? 'bg-white text-emerald-600 shadow-2xs'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      <span>فارسی</span>
+                    </button>
+                    <button
+                      onClick={() => setContentViewMode('english')}
+                      className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        contentViewMode === 'english'
+                          ? 'bg-white text-sky-600 shadow-2xs'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      <span>English</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Content Comparison Container */}
+                {loadingDetail ? (
+                  <div className="h-48 bg-gray-50 rounded-2xl border border-gray-200 flex flex-col items-center justify-center gap-2 text-xs text-gray-400 animate-pulse">
+                    <RefreshCw className="w-5 h-5 animate-spin text-orange-500" />
+                    <span>در حال بارگذاری متن کامل و جزئیات خبر...</span>
+                  </div>
+                ) : (
+                  <div className={`grid gap-4 ${contentViewMode === 'split' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+                    {/* Persian Column / Box */}
+                    {(contentViewMode === 'split' || contentViewMode === 'persian') && (
+                      <div className="bg-white border border-orange-200/80 rounded-2xl p-4 flex flex-col justify-between shadow-2xs">
+                        <div>
+                          <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-100">
+                            <span className="text-xs font-bold text-orange-700 flex items-center gap-1.5">
+                              <Edit3 className="w-3.5 h-3.5 text-orange-500" />
+                              <span>متن ترجمه شده (فارسی)</span>
+                            </span>
+                            {fullTranslatedContent && (
+                              <button
+                                onClick={() => handleCopyText(fullTranslatedContent, selectedArticle.id)}
+                                className="text-[10px] text-gray-500 hover:text-gray-900 flex items-center gap-1 px-2 py-0.5 rounded bg-gray-50 border border-gray-200"
+                              >
+                                {copiedId === selectedArticle.id ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                                <span>{copiedId === selectedArticle.id ? 'کپی شد' : 'کپی'}</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {fullTranslatedContent ? (
+                            <textarea
+                              value={fullTranslatedContent || ''}
+                              onChange={(e) => {
+                                if (!selectedArticleId) return;
+                                setDetailsMap((prev) => ({
+                                  ...prev,
+                                  [selectedArticleId]: {
+                                    ...prev[selectedArticleId],
+                                    translated_content: e.target.value
+                                  }
+                                }));
+                              }}
+                              rows={contentViewMode === 'split' ? 12 : 9}
+                              placeholder="متن ترجمه شده خبر..."
+                              className="w-full text-xs text-gray-800 leading-relaxed bg-gray-50/50 border border-gray-200 rounded-xl p-3 focus:bg-white focus:border-orange-500 focus:outline-none transition-colors"
+                            />
+                          ) : (
+                            <div className="p-6 bg-amber-50/50 rounded-xl border border-amber-200 text-center space-y-2">
+                              <p className="text-xs font-bold text-amber-800">این خبر هنوز ترجمه نشده است</p>
+                              <button
+                                onClick={() => handleSingleTranslate(selectedArticle.id)}
+                                disabled={translatingId === selectedArticle.id}
+                                className="bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                              >
+                                <Sparkles className={`w-3.5 h-3.5 ${translatingId === selectedArticle.id ? 'animate-spin' : ''}`} />
+                                <span>{translatingId === selectedArticle.id ? 'در حال ترجمه...' : 'ترجمه هوشمند AI'}</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* English Column / Box */}
+                    {(contentViewMode === 'split' || contentViewMode === 'english') && (
+                      <div className="bg-slate-50 border border-gray-200 rounded-2xl p-4 flex flex-col justify-between shadow-2xs">
+                        <div>
+                          <div className="flex items-center justify-between mb-2 pb-2 border-b border-gray-200">
+                            <span className="text-xs font-bold text-sky-800 flex items-center gap-1.5">
+                              <Globe className="w-3.5 h-3.5 text-sky-600" />
+                              <span>متن اصلی خبر (Original English Source)</span>
+                            </span>
+                            <span className="text-[10px] text-gray-400 font-mono">
+                              {fullContent ? `${fullContent.length} chars` : 'RSS Feed'}
+                            </span>
+                          </div>
+
+                          <div className={`overflow-y-auto text-xs text-gray-700 font-mono ltr text-left leading-relaxed bg-white p-3 rounded-xl border border-gray-200 whitespace-pre-line ${contentViewMode === 'split' ? 'max-h-[260px]' : 'max-h-[300px]'}`}>
+                            {fullContent || selectedArticle.content || selectedArticle.summary || 'متن انگلیسی خامی در دسترس نیست.'}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Tags */}
                 {tags.length > 0 && (
