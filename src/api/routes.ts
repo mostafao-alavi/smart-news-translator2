@@ -771,11 +771,11 @@ api.post('/sources/restore-defaults', async (c) => {
 
     const defaultSources = [
       {
-        name: 'Cointelegraph',
-        url: 'https://cointelegraph.com/rss',
+        name: 'Cointelegraph (Latest News)',
+        url: 'https://cointelegraph.com/rss/category/latest-news',
         language: 'en',
         category: 'crypto',
-        scrape_limit: 10,
+        scrape_limit: 30,
         is_active: 1,
       },
       {
@@ -944,9 +944,9 @@ api.post('/sources/:id/scrape', async (c) => {
     const source = await c.env.DB.prepare('SELECT * FROM sources WHERE id = ?').bind(id).first<any>();
     const sourceObj = source || {
       id: Number(id) || 1,
-      name: 'Cointelegraph',
-      url: 'https://cointelegraph.com/rss',
-      scrape_limit: 20,
+      name: 'Cointelegraph (Latest News)',
+      url: 'https://cointelegraph.com/rss/category/latest-news',
+      scrape_limit: 30,
     };
 
     const articles = await scrapeFeedSource(c.env, sourceObj);

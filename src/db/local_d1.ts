@@ -1,7 +1,7 @@
 // In-memory fallback tables & execution engine for local dev and testing
 const memoryTables: Record<string, any[]> = {
   sources: [
-    { id: 1, name: 'Cointelegraph', url: 'https://cointelegraph.com/rss', rss_url: 'https://cointelegraph.com/rss', base_url: 'https://cointelegraph.com', language: 'en', category: 'crypto', selector: '', is_active: 1, scrape_limit: 10, created_at: new Date().toISOString() },
+    { id: 1, name: 'Cointelegraph (Latest News)', url: 'https://cointelegraph.com/rss/category/latest-news', rss_url: 'https://cointelegraph.com/rss/category/latest-news', base_url: 'https://cointelegraph.com', language: 'en', category: 'crypto', selector: '', is_active: 1, scrape_limit: 30, created_at: new Date().toISOString() },
     { id: 2, name: 'Decrypt', url: 'https://decrypt.co/feed', rss_url: 'https://decrypt.co/feed', base_url: 'https://decrypt.co', language: 'en', category: 'crypto', selector: '', is_active: 1, scrape_limit: 10, created_at: new Date().toISOString() },
     { id: 3, name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', rss_url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', base_url: 'https://www.coindesk.com', language: 'en', category: 'crypto', selector: '', is_active: 1, scrape_limit: 10, created_at: new Date().toISOString() }
   ],

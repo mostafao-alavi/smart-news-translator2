@@ -278,8 +278,8 @@ export async function scrapeCointelegraph(env: Env, options?: { maxItems?: numbe
 }>> {
   return scrapeFeedSource(env, {
     id: 1,
-    name: 'Cointelegraph',
-    url: 'https://cointelegraph.com/rss',
+    name: 'Cointelegraph (Latest News)',
+    url: 'https://cointelegraph.com/rss/category/latest-news',
     scrape_limit: options?.maxItems || 30
   });
 }
@@ -498,7 +498,7 @@ export async function scraper(env: Env): Promise<{ scrapedSources: number; inser
 
   if (sourcesToScrape.length === 0) {
     sourcesToScrape = [
-      { id: 1, name: 'Cointelegraph', url: 'https://cointelegraph.com/rss', scrape_limit: 15 },
+      { id: 1, name: 'Cointelegraph (Latest News)', url: 'https://cointelegraph.com/rss/category/latest-news', scrape_limit: 30 },
       { id: 2, name: 'Decrypt', url: 'https://decrypt.co/feed', scrape_limit: 10 },
       { id: 3, name: 'CoinDesk', url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', scrape_limit: 10 }
     ];

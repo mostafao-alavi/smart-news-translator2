@@ -69,6 +69,6 @@ CREATE INDEX IF NOT EXISTS idx_articles_scraped ON articles(scraped_at DESC);
 CREATE INDEX IF NOT EXISTS idx_articles_source ON articles(source_id);
 CREATE INDEX IF NOT EXISTS idx_images_article ON article_images(article_id);
 
--- Seed: Cointelegraph
+-- Seed: Cointelegraph (Latest News)
 INSERT OR IGNORE INTO sources (id, name, rss_url, base_url, language, category, is_active, scrape_limit)
-VALUES (1, 'Cointelegraph', 'https://cointelegraph.com/rss', 'https://cointelegraph.com', 'en', 'crypto', 1, 10);
+VALUES (1, 'Cointelegraph (Latest News)', 'https://cointelegraph.com/rss/category/latest-news', 'https://cointelegraph.com', 'en', 'crypto', 1, 30);

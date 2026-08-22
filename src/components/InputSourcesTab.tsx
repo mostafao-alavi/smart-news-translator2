@@ -50,12 +50,12 @@ interface PresetSource {
 
 const PRESET_SOURCES: PresetSource[] = [
   {
-    name: 'Cointelegraph',
-    url: 'https://cointelegraph.com/rss',
+    name: 'Cointelegraph (Latest News)',
+    url: 'https://cointelegraph.com/rss/category/latest-news',
     category: 'crypto',
     language: 'en',
-    description: 'پیشروترین پایگاه خبری حوزه ارزهای دیجیتال و وب ۳ در جهان',
-    tag: 'کریپتو / بلاکچین',
+    description: 'پوشش اختصاصی و لحظه‌ای آخرین اخبار فوری دنیای کریپتو و بلاکچین (Latest News)',
+    tag: 'اخبار فوری کریپتو',
   },
   {
     name: 'Decrypt',
@@ -164,6 +164,7 @@ export const InputSourcesTab: React.FC<InputSourcesTabProps> = ({
   const handleInsertPresetSource = async (preset: PresetSource) => {
     setActionLoading(`insert-${preset.name}`);
     try {
+      const isCointelegraph = preset.name.includes('Cointelegraph');
       const res = await fetch('/api/sources', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -172,7 +173,7 @@ export const InputSourcesTab: React.FC<InputSourcesTabProps> = ({
           url: preset.url,
           category: preset.category,
           language: preset.language || 'en',
-          scrape_limit: 10,
+          scrape_limit: isCointelegraph ? 30 : 15,
           is_active: 1,
         }),
       });
@@ -390,9 +391,9 @@ export const InputSourcesTab: React.FC<InputSourcesTabProps> = ({
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-base font-bold text-gray-900">Cointelegraph</h3>
+                <h3 className="text-base font-bold text-gray-900">Cointelegraph (Latest News)</h3>
                 <span className="text-[10px] bg-sky-50 text-sky-700 border border-sky-100 px-2 py-0.5 rounded-md font-bold">
-                  کریپتو / بلاکچین
+                  اخبار فوری و لحظه‌ای
                 </span>
                 <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded-md font-mono">
                   EN
@@ -412,7 +413,7 @@ export const InputSourcesTab: React.FC<InputSourcesTabProps> = ({
                 )}
               </div>
               <p className="text-xs text-gray-500 mt-0.5">
-                پیشروترین پایگاه خبری حوزه ارزهای دیجیتال و وب ۳ در جهان
+                پوشش اختصاصی و لحظه‌ای آخرین اخبار فوری دنیای کریپتو و بلاکچین (Latest News)
               </p>
             </div>
           </div>
@@ -420,11 +421,11 @@ export const InputSourcesTab: React.FC<InputSourcesTabProps> = ({
           {/* Quick External Link & D1 Query Status */}
           <div className="flex items-center gap-2">
             <a
-              href="https://cointelegraph.com"
+              href="https://cointelegraph.com/category/latest-news"
               target="_blank"
               rel="noopener noreferrer"
               className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors border border-gray-100"
-              title="مشاهده وب‌سایت اصلی"
+              title="مشاهده بخش آخرین اخبار در وب‌سایت اصلی"
             >
               <ExternalLink className="w-4 h-4" />
             </a>
@@ -438,7 +439,7 @@ export const InputSourcesTab: React.FC<InputSourcesTabProps> = ({
               <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
               <div className="space-y-1 text-xs">
                 <p className="font-bold text-rose-900">
-                  منبع Cointelegraph در جدول sources پایگاه داده D1 وجود ندارد!
+                  منبع Cointelegraph (Latest News) در جدول sources پایگاه داده D1 وجود ندارد!
                 </p>
                 <p className="text-rose-700 leading-relaxed">
                   احتمالاً به دلیل اجرای پاکسازی کامل از صفحه تنظیمات، رکوردهای جدول منابع حذف شده‌اند. تا زمانی که این منبع در دیتابیس ثبت نباشد، اسکرپر خودکار خبر جدیدی دریافت نخواهد کرد.
@@ -450,12 +451,12 @@ export const InputSourcesTab: React.FC<InputSourcesTabProps> = ({
               <button
                 onClick={() =>
                   handleInsertPresetSource({
-                    name: 'Cointelegraph',
-                    url: 'https://cointelegraph.com/rss',
+                    name: 'Cointelegraph (Latest News)',
+                    url: 'https://cointelegraph.com/rss/category/latest-news',
                     category: 'crypto',
                     language: 'en',
-                    description: 'پیشروترین پایگاه خبری حوزه ارزهای دیجیتال و وب ۳ در جهان',
-                    tag: 'کریپتو',
+                    description: 'پوشش اختصاصی و لحظه‌ای آخرین اخبار فوری دنیای کریپتو و بلاکچین (Latest News)',
+                    tag: 'اخبار فوری کریپتو',
                   })
                 }
                 disabled={actionLoading === 'insert-Cointelegraph'}
@@ -487,7 +488,7 @@ export const InputSourcesTab: React.FC<InputSourcesTabProps> = ({
             <div className="flex items-center gap-2 min-w-0">
               <Radio className="w-4 h-4 text-orange-500 shrink-0" />
               <span className="text-xs font-mono text-gray-700 truncate ltr">
-                https://cointelegraph.com/rss
+                https://cointelegraph.com/rss/category/latest-news
               </span>
             </div>
 
@@ -514,10 +515,10 @@ export const InputSourcesTab: React.FC<InputSourcesTabProps> = ({
 
               {/* LIVE PING TEST BUTTON */}
               <button
-                onClick={() => handleTestFeedConnection('https://cointelegraph.com/rss')}
+                onClick={() => handleTestFeedConnection('https://cointelegraph.com/rss/category/latest-news')}
                 disabled={isTestingFeed}
                 className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 text-[11px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 transition-colors cursor-pointer shadow-2xs"
-                title="تست زنده اتصال به سرور Cointelegraph"
+                title="تست زنده اتصال به سرور Cointelegraph Latest News"
               >
                 <Activity className={`w-3 h-3 text-sky-600 ${isTestingFeed ? 'animate-spin' : ''}`} />
                 <span>{isTestingFeed ? 'در حال تست...' : 'تست زنده فید RSS'}</span>
@@ -576,12 +577,12 @@ export const InputSourcesTab: React.FC<InputSourcesTabProps> = ({
               <button
                 onClick={() =>
                   handleInsertPresetSource({
-                    name: 'Cointelegraph',
-                    url: 'https://cointelegraph.com/rss',
+                    name: 'Cointelegraph (Latest News)',
+                    url: 'https://cointelegraph.com/rss/category/latest-news',
                     category: 'crypto',
                     language: 'en',
-                    description: 'پیشروترین پایگاه خبری حوزه ارزهای دیجیتال و وب ۳ در جهان',
-                    tag: 'کریپتو',
+                    description: 'پوشش اختصاصی و لحظه‌ای آخرین اخبار فوری دنیای کریپتو و بلاکچین (Latest News)',
+                    tag: 'اخبار فوری کریپتو',
                   })
                 }
                 className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
@@ -595,7 +596,7 @@ export const InputSourcesTab: React.FC<InputSourcesTabProps> = ({
               <Zap className="w-3.5 h-3.5 text-amber-500" />
               <span>
                 {cointelegraphInDb
-                  ? `سقف پایش: ${cointelegraphInDb.scrape_limit || 10} مقاله در هر اجرا`
+                  ? `سقف پایش: ${cointelegraphInDb.scrape_limit || 30} مقاله در هر اجرا`
                   : 'پایش غیرفعال'}
               </span>
             </div>

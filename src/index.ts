@@ -49,7 +49,7 @@ app.get('/health', (c) => {
       status: 'operational',
       version: '1.0.1',
       worker: 'smart-news-translator2',
-      focus: 'Cointelegraph -> WordPress & Telegram',
+      focus: 'Cointelegraph (Latest News) -> WordPress & Telegram',
       timestamp: new Date().toISOString(),
     },
     error: null,

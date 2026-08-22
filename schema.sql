@@ -112,4 +112,4 @@ CREATE INDEX IF NOT EXISTS idx_translations_article ON translations(article_id);
 
 -- Seed: Cointelegraph Source
 INSERT OR IGNORE INTO sources (id, name, rss_url, base_url, language, category, is_active, scrape_limit)
-VALUES (1, 'Cointelegraph', 'https://cointelegraph.com/rss', 'https://cointelegraph.com', 'en', 'crypto', 1, 10);
+VALUES (1, 'Cointelegraph (Latest News)', 'https://cointelegraph.com/rss/category/latest-news', 'https://cointelegraph.com', 'en', 'crypto', 1, 30);
